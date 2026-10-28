@@ -1,6 +1,11 @@
 {
+  // CAUTION: the Worker trusts the X-Principal-Id and X-Principal-Kind headers.
+  // Any caller can act as any principal. Do not expose this Worker to the public
+  // internet until real auth lands. It answers 503 unless TASKS_UNSAFE_TRUST_HEADERS=1
+  // is set. Set that only behind a gateway that checks identity and sets the headers.
+  //
   // Worker for the /api/v1/tasks HTTP API. The store is in memory, so state
-  // lasts only as long as one Worker instance does.
+  // lasts only as long as one Worker instance does, and instances do not share claims.
   "name": "agentic-tasks",
   "main": "src/worker.ts",
   "compatibility_date": "2026-01-01"

@@ -8,7 +8,15 @@
 Task boards where people and agents claim and finish work.
 
 > Status: early. The library, CLI, and MCP server work over a local JSON file.
-> The HTTP API is not built yet. The package is not on npm yet.
+> The HTTP API runs as a Worker, but it has no authentication yet. The package
+> is not on npm yet.
+
+> [!CAUTION]
+> Do not expose the HTTP API to the public internet. The Worker trusts the
+> `X-Principal-Id` and `X-Principal-Kind` headers. Any caller can act as any
+> person or agent. The Worker answers 503 until you set
+> `TASKS_UNSAFE_TRUST_HEADERS=1`. Set it only behind a gateway that checks
+> identity and sets those headers itself.
 
 ## Planned features
 
@@ -26,7 +34,7 @@ One package gives you each way in:
 - **Library and SDK**: `import { ... } from "agentic-tasks"`.
 - **CLI**: `npx agentic-tasks --help`.
 - **MCP server**: `npx agentic-tasks mcp`, for Claude Code and other MCP clients.
-- **HTTP API**: a Cloudflare Worker you deploy to your own account.
+- **HTTP API**: a Cloudflare Worker at `/api/v1/tasks`. Read the caution above first.
 - **Web UI**: a small app served by the same Worker.
 
 ## Develop
@@ -35,6 +43,21 @@ One package gives you each way in:
 npm ci
 npm run build && npm run typecheck && npm test
 ```
+
+Run the HTTP API on your machine only:
+
+```sh
+npx wrangler dev --var TASKS_UNSAFE_TRUST_HEADERS:1
+```
+
+## Limits
+
+- The HTTP API has no authentication. It trusts the principal headers.
+- The Worker keeps state in memory. Each instance has its own tasks and claims,
+  so the claim rules do not hold across instances.
+- The JSON file store works on one machine. Do not put the file on a network share.
+- A live claim blocks other claims and closes. Moves, edits, and progress notes
+  do not check the claim.
 
 ## License
 

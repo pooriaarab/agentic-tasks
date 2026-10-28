@@ -11,8 +11,8 @@ const STATUS_BY_CODE: Record<TaskErrorCode, 400 | 403 | 404 | 409> = {
   TASK_CLOSED: 409,
 };
 
-// The actor comes from headers. Nothing checks these headers yet, so the
-// Worker must not face the public internet until the identity port lands.
+// The actor comes from headers. Nothing checks these headers yet. Any caller
+// can name any principal, so the Worker serves nothing until the operator opts in.
 function actorOf(c: Context): Principal {
   return {
     id: c.req.header("x-principal-id") ?? "",
@@ -31,8 +31,30 @@ async function jsonBody<T>(c: Context): Promise<T> {
   }
 }
 
+interface Bindings {
+  TASKS_UNSAFE_TRUST_HEADERS?: string;
+}
+
 export function createApp(tasks: Tasks) {
-  const api = new Hono().basePath("/api/v1/tasks");
+  const api = new Hono<{ Bindings: Bindings }>().basePath("/api/v1/tasks");
+
+  // A Worker reads its env per request, not at import time, so the gate runs
+  // on every request. Set TASKS_UNSAFE_TRUST_HEADERS=1 only behind a gateway.
+  api.use("*", async (c, next) => {
+    if (c.env?.TASKS_UNSAFE_TRUST_HEADERS !== "1") {
+      return c.json(
+        {
+          error: {
+            code: "HEADER_TRUST_NOT_ENABLED",
+            message:
+              "Set TASKS_UNSAFE_TRUST_HEADERS=1 to serve. Trust only holds behind a gateway that checks identity.",
+          },
+        },
+        503,
+      );
+    }
+    await next();
+  });
 
   api.onError((error, c) => {
     if (error instanceof TaskError) {
@@ -120,4 +142,5 @@ export function createApp(tasks: Tasks) {
   return api;
 }
 
+// State lives in this Worker instance only. Two instances do not share claims.
 export default createApp(createTasks({ store: createMemoryStore() }));
