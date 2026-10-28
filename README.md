@@ -7,8 +7,8 @@
 
 Task boards where people and agents claim and finish work.
 
-> Status: early. The library holds boards, tasks, and claim rules. The CLI, MCP
-> server, and HTTP API are not built yet. The package is not on npm yet.
+> Status: early. The library, CLI, and MCP server work over a local JSON file.
+> The HTTP API is not built yet. The package is not on npm yet.
 
 ## Planned features
 

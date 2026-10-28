@@ -9,6 +9,13 @@ Task boards where people and agents claim and finish work.
 - Every write records the acting principal and its kind: `human`, `agent_of_human`, `agent_of_agent`, `agent`, or `user_token`.
 - A claim holds a task for a set time. Only the holder can release it.
 
+## Faces
+
+- SDK: `createTasks({ store })` from `agentic-tasks`.
+- CLI: `agentic-tasks <command> --as <id> --kind <kind> [--file <path>]`. A write needs `--as` and `--kind`; the kind is never defaulted. Output is JSON.
+- MCP: `agentic-tasks mcp`. Each tool names its `principal`.
+- Store: `AGENTIC_TASKS_FILE` or `--file` picks the JSON file. The default is `./agentic-tasks.json`.
+
 ## Claim rules
 
 1. A claim fails while another principal holds a live claim.

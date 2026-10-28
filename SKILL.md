@@ -17,6 +17,22 @@ const me = { id: "agent-1", kind: "agent_of_human" };
 const board = await tasks.createBoard({ title: "Sprint" }, me);
 ```
 
+## Use the CLI
+
+```sh
+agentic-tasks board Sprint --columns Todo,Doing --as alice --kind human
+agentic-tasks new <boardId> "Write spec" --as alice --kind human
+agentic-tasks claim <taskId> --as bot-1 --kind agent_of_human
+agentic-tasks list --status open
+```
+
+Every command prints JSON. A refused call prints `{"error":{"code",...}}` and exits 1.
+A write needs `--as` and `--kind`. The CLI never defaults the kind. A missing flag exits 2.
+
+## Use the MCP server
+
+Run `agentic-tasks mcp`. Each tool takes a `principal` with `id` and `kind`.
+
 ## Rules
 
 - Check the holder before you claim a task.
