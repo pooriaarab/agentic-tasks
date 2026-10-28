@@ -12,7 +12,7 @@ Task boards where people and agents claim and finish work.
 ## Faces
 
 - SDK: `createTasks({ store })` from `agentic-tasks`.
-- CLI: `agentic-tasks <command> --as <id> [--kind <kind>] [--file <path>]`. Output is JSON.
+- CLI: `agentic-tasks <command> --as <id> --kind <kind> [--file <path>]`. A write needs `--as` and `--kind`; the kind is never defaulted. Output is JSON.
 - MCP: `agentic-tasks mcp`. Each tool names its `principal`.
 - Store: `AGENTIC_TASKS_FILE` or `--file` picks the JSON file. The default is `./agentic-tasks.json`.
 

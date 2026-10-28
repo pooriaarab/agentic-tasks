@@ -1,4 +1,5 @@
-import { spawnSync } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
+import { readFileSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -138,6 +139,14 @@ describe("agentic-tasks CLI (built binary)", () => {
     expect((JSON.parse(moved.stdout) as { columnId: string }).columnId).toBe(doing);
   });
 
+  it("refuses a write without --kind and records no change", () => {
+    const { boardId } = makeBoard();
+    const refused = run(["new", boardId, "Write spec", "--as", "bot-1"]);
+    expect(refused.code).toBe(2);
+    expect(refused.stderr).toMatch(/--kind/);
+    expect(JSON.parse(run(["list", "--board", boardId]).stdout)).toEqual([]);
+  });
+
   it("rejects an unknown principal kind with INVALID_INPUT", () => {
     const { boardId } = makeBoard();
     const refused = run(["new", boardId, "Write spec", "--as", "x", "--kind", "root"]);
@@ -149,6 +158,93 @@ describe("agentic-tasks CLI (built binary)", () => {
     const result = run(["teleport"]);
     expect(result.code).toBe(2);
     expect(result.stderr).toMatch(/usage/i);
+  });
+});
+
+describe("agentic-tasks lock file (built binary)", () => {
+  let dir: string;
+  let file: string;
+  let lockPath: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "agentic-tasks-lock-"));
+    file = join(dir, "tasks.json");
+    lockPath = `${file}.lock`;
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  function run(args: string[]): Run {
+    const result = spawnSync(process.execPath, [CLI, ...args, "--file", file], {
+      encoding: "utf8",
+    });
+    return { code: result.status, stdout: result.stdout, stderr: result.stderr };
+  }
+
+  function runAsync(args: string[]): Promise<Run> {
+    return new Promise((resolve) => {
+      execFile(process.execPath, [CLI, ...args, "--file", file], (error, stdout, stderr) => {
+        const code = error === null ? 0 : typeof error.code === "number" ? error.code : 1;
+        resolve({ code, stdout, stderr });
+      });
+    });
+  }
+
+  function makeTask(): string {
+    const board = JSON.parse(
+      run(["board", "Sprint", "--columns", "Todo", ...ALICE]).stdout,
+    ) as { id: string; columns: { id: string }[] };
+    const task = JSON.parse(run(["new", board.id, "Write spec", ...ALICE]).stdout) as {
+      id: string;
+    };
+    return task.id;
+  }
+
+  function writeLock(owner: { pid: number; createdAt: number }): string {
+    const text = JSON.stringify({ ...owner, token: "test-token" });
+    writeFileSync(lockPath, text);
+    return text;
+  }
+
+  function deadPid(): number {
+    return spawnSync(process.execPath, ["-e", ""]).pid as number;
+  }
+
+  it("takes over a lock whose process has exited", () => {
+    const id = makeTask();
+    writeLock({ pid: deadPid(), createdAt: Date.now() });
+    const claimed = run(["claim", id, ...ALICE]);
+    expect(claimed.code).toBe(0);
+  });
+
+  it("takes over a lock older than the timeout even when its process still runs", () => {
+    const id = makeTask();
+    writeLock({ pid: process.pid, createdAt: Date.now() - 10 * 60_000 });
+    expect(run(["claim", id, ...ALICE]).code).toBe(0);
+  });
+
+  it("does not take a fresh lock held by a live process", () => {
+    const id = makeTask();
+    const held = writeLock({ pid: process.pid, createdAt: Date.now() });
+    const refused = run(["claim", id, ...ALICE]);
+    expect(refused.code).toBe(1);
+    expect(refused.stderr).toMatch(/store is locked/);
+    expect(readFileSync(lockPath, "utf8")).toBe(held);
+  }, 20_000);
+
+  it("lets exactly one of two parallel claims through across processes", async () => {
+    const id = makeTask();
+    const results = await Promise.all([
+      runAsync(["claim", id, ...ALICE]),
+      runAsync(["claim", id, ...BOT]),
+    ]);
+    expect(results.map((result) => result.code).sort()).toEqual([0, 1]);
+    const refused = results.find((result) => result.code === 1);
+    expect(JSON.parse(refused?.stderr ?? "{}")).toMatchObject({
+      error: { code: "CLAIM_HELD" },
+    });
   });
 });
 

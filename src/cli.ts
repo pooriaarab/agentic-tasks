@@ -44,10 +44,14 @@ function many(flags: Map<string, string[]>, name: string): string[] {
   return flags.get(name) ?? [];
 }
 
+// Every write names its actor and kind. The kind is never defaulted, so an
+// agent's write cannot be recorded as a person's.
 function actorFrom(flags: Map<string, string[]>): Principal {
   const id = one(flags, "as");
   if (id === undefined) throw new UsageError("this command needs --as <id>");
-  return { id, kind: (one(flags, "kind") ?? "human") as PrincipalKind };
+  const kind = one(flags, "kind");
+  if (kind === undefined) throw new UsageError("this command needs --kind <kind>");
+  return { id, kind: kind as PrincipalKind };
 }
 
 function assignees(flags: Map<string, string[]>): Principal[] | undefined {
