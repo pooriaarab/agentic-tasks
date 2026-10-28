@@ -1,0 +1,24 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.pooriaarab/agentic-tasks",
+  "description": "Task boards where people and agents claim and finish work.",
+  "version": "0.1.0",
+  "repository": {
+    "url": "https://github.com/pooriaarab/agentic-tasks",
+    "source": "github",
+    "id": 0
+  },
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "agentic-tasks",
+      "version": "0.1.0",
+      "transport": { "type": "stdio" },
+      "runtimeHint": "npx",
+      "packageArguments": [
+        { "type": "positional", "valueHint": "subcommand", "value": "mcp" }
+      ]
+    }
+  ]
+}
