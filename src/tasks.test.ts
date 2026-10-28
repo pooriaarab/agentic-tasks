@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { TaskError, type Principal } from "./model.js";
+import { TaskError, type Claim, type Principal, type Task } from "./model.js";
 import { createFileStore, createMemoryStore, type Store } from "./store.js";
 import { createTasks, type Tasks } from "./tasks.js";
 
@@ -12,6 +12,7 @@ const TEN_MINUTES = 600_000;
 
 interface Harness {
   tasks: Tasks;
+  store: Store;
   advance: (ms: number) => void;
   cleanup: () => Promise<void>;
 }
@@ -37,6 +38,7 @@ async function harnessFor(open: Backend[1]): Promise<Harness> {
   let ms = Date.parse("2026-10-28T10:00:00Z");
   return {
     tasks: createTasks({ store, now: () => new Date(ms) }),
+    store,
     advance: (delta) => {
       ms += delta;
     },
@@ -74,6 +76,16 @@ describe.each(backends)("claim rules on the %s store", (_name, open) => {
       ALICE,
     );
     return task.id;
+  }
+
+  // Writes a claim the API would never write, as a hand-edited file could hold.
+  async function writeRawClaim(id: string, claim: Claim): Promise<void> {
+    await h.store.transaction((tx) => {
+      const task = tx.get<Task>("tasks", id);
+      if (!task) throw new Error("fixture task is missing");
+      const corrupt: Task = { ...task, claim };
+      tx.put("tasks", corrupt);
+    });
   }
 
   it("claims an open task and records the holder and expiry", async () => {
@@ -185,6 +197,45 @@ describe.each(backends)("claim rules on the %s store", (_name, open) => {
     const closed = await h.tasks.closeTask(id, ALICE);
     expect(closed.status).toBe("closed");
     expect(closed.claim).toBeUndefined();
+  });
+
+  it("refuses a close by another principal while the claim is live", async () => {
+    const id = await openTask();
+    await h.tasks.claim(id, ALICE, { ttlMs: TEN_MINUTES });
+    await expect(errorCode(h.tasks.closeTask(id, BOT))).resolves.toBe("CLAIM_HELD");
+    const task = await h.tasks.getTask(id);
+    expect(task.status).toBe("open");
+    expect(task.claim?.holder).toEqual(ALICE);
+  });
+
+  it("lets another principal close the task once the claim expires", async () => {
+    const id = await openTask();
+    await h.tasks.claim(id, ALICE, { ttlMs: TEN_MINUTES });
+    h.advance(TEN_MINUTES);
+    const closed = await h.tasks.closeTask(id, BOT);
+    expect(closed.status).toBe("closed");
+  });
+
+  it("lets another principal close the task after the holder releases it", async () => {
+    const id = await openTask();
+    await h.tasks.claim(id, ALICE, { ttlMs: TEN_MINUTES });
+    await h.tasks.release(id, ALICE);
+    const closed = await h.tasks.closeTask(id, BOT);
+    expect(closed.status).toBe("closed");
+  });
+
+  it("treats a claim with an unparseable expiry as live, so nobody takes it", async () => {
+    const id = await openTask();
+    await writeRawClaim(id, {
+      holder: ALICE,
+      claimedAt: "2026-10-28T10:00:00.000Z",
+      expiresAt: "soon",
+    });
+    await expect(
+      errorCode(h.tasks.claim(id, BOT, { ttlMs: TEN_MINUTES })),
+    ).resolves.toBe("CLAIM_HELD");
+    await expect(errorCode(h.tasks.closeTask(id, BOT))).resolves.toBe("CLAIM_HELD");
+    expect((await h.tasks.getTask(id)).claim?.holder).toEqual(ALICE);
   });
 
   it("lets exactly one of two simultaneous claims succeed", async () => {

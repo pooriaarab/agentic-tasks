@@ -146,8 +146,10 @@ function samePrincipal(a: Principal, b: Principal): boolean {
 }
 
 // A claim is live until its expiry instant. At the instant itself it has expired.
+// An expiry that does not parse counts as live, so a corrupt claim blocks others.
 function isLive(claim: Claim, nowMs: number): boolean {
-  return Date.parse(claim.expiresAt) > nowMs;
+  const expiresMs = Date.parse(claim.expiresAt);
+  return !Number.isFinite(expiresMs) || expiresMs > nowMs;
 }
 
 function nextPosition(siblings: Task[]): number {
@@ -303,7 +305,19 @@ export function createTasks(options: TasksOptions): Tasks {
       return store.transaction((tx) => {
         const task = requireTask(tx, id);
         requireOpen(task);
-        const at = clock().toISOString();
+        const now = clock();
+        const at = now.toISOString();
+        const claim = task.claim;
+        if (
+          claim !== undefined &&
+          isLive(claim, now.getTime()) &&
+          !samePrincipal(claim.holder, actor)
+        ) {
+          throw new TaskError(
+            "CLAIM_HELD",
+            `task ${id} is held by another principal until ${claim.expiresAt}`,
+          );
+        }
         task.status = "closed";
         task.closedAt = at;
         delete task.claim;

@@ -13,11 +13,14 @@ Task boards where people and agents claim and finish work.
 
 1. A claim fails while another principal holds a live claim.
 2. A claim is live until its expiry instant. At that instant it has expired.
-3. The holder can claim again to renew the claim.
-4. A claim fails on a closed task.
-5. Only the holder can release. A release with no claim fails.
-6. Closing a task clears its claim.
-7. Two simultaneous claims: exactly one succeeds.
+3. A claim whose expiry does not parse counts as live.
+4. The holder can claim again to renew the claim.
+5. A claim fails on a closed task.
+6. Only the holder can release. A release with no claim fails.
+7. While another principal holds a live claim, a close fails. The holder can close.
+8. Closing a task clears its claim.
+9. Two simultaneous claims: exactly one succeeds.
+10. Moves, edits, and progress notes do not check the claim. Only claims, releases, and closes do.
 
 ## Rules
 
