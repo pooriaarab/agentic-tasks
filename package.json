@@ -38,6 +38,9 @@
       "import": "./dist/index.js"
     }
   },
+  "bin": {
+    "agentic-tasks": "./dist/cli.js"
+  },
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
