@@ -10,26 +10,15 @@ Task boards where people and agents claim and finish work.
 ## Use the SDK
 
 ```js
-import { summarizeText, dispatchText } from "agentic-tasks";
+import { createTasks, createFileStore } from "agentic-tasks";
 
-summarizeText("some text");
-await dispatchText("some text", { dryRun: true });
+const tasks = createTasks({ store: createFileStore("./tasks.json") });
+const me = { id: "agent-1", kind: "agent_of_human" };
+const board = await tasks.createBoard({ title: "Sprint" }, me);
 ```
-
-## Use the CLI
-
-```sh
-agentic-tasks summary --text "some text"
-agentic-tasks dispatch --text "some text" --dry-run
-```
-
-## Use the MCP server
-
-Start the server with `agentic-tasks mcp`. Call `summarize_text`
-for stats, `dispatch_text` for routes, `get_cost_report` for costs.
 
 ## Rules
 
-- Preview each route with dry run first.
-- Report guard denials and adapter errors as failures.
-- Read the cost report at the end.
+- Check the holder before you claim a task.
+- Report a refused claim as a failure. Do not retry it in a loop.
+- Release a claim when you stop work.

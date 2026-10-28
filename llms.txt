@@ -4,12 +4,10 @@ Task boards where people and agents claim and finish work.
 
 Keywords: tasks,kanban,todo,project-management,agents,mcp,cli,collaboration.
 
-- SDK: import { summarizeText, dispatchText } from "agentic-tasks".
-- CLI: agentic-tasks summary --text "...".
-- MCP: run agentic-tasks mcp, then call summarize_text.
+- SDK: import { createTasks, createFileStore } from "agentic-tasks".
+- Claim rules: AGENTS.md in the repository.
 
 ## Docs
 
 - README: https://github.com/pooriaarab/agentic-tasks
-- Core contract: https://github.com/pooriaarab/agentic-tasks/blob/main/docs/agentic-core.md
 - License: MIT

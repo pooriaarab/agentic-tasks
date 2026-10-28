@@ -7,8 +7,8 @@
 
 Task boards where people and agents claim and finish work.
 
-> Status: scaffold. This repository holds the starter code only. It is not on npm
-> yet, and none of the features below work yet.
+> Status: early. The library holds boards, tasks, and claim rules. The CLI, MCP
+> server, and HTTP API are not built yet. The package is not on npm yet.
 
 ## Planned features
 

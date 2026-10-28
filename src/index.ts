@@ -1,47 +1,26 @@
 export { VERSION } from "./version.js";
-export {
-  defineBrand,
-  createLogger,
-  GuardError,
-  VendorError,
-  createGuards,
-  LocalRouterAdapter,
-  HttpRouterAdapter,
-  recordCost,
-  getCostReport,
-  resetCosts,
-  createDryRunResult,
-  dispatchText,
-  summarizeText,
-} from "./core.js";
+export { TaskError, PRINCIPAL_KINDS } from "./model.js";
 export type {
-  BrandConfig,
-  LogLevel,
-  Logger,
-  LoggerOptions,
-  CapsConfig,
-  QuietHoursConfig,
-  GuardsConfig,
-  Guards,
-  DispatchReceipt,
-  RouterAdapter,
-  HttpRouterOptions,
-  CostEntry,
-  CostReport,
-  DispatchOptions,
-  DispatchResult,
-  TopWord,
-  TextSummary,
-  SummarizeOptions,
-} from "./core.js";
-
-import { defineBrand, type BrandConfig } from "./core.js";
-import { VERSION } from "./version.js";
-
-export const DEFAULT_BRAND: BrandConfig = defineBrand({
-  name: "Agentic pack",
-  command: "agentic-tasks",
-  description: "Task boards where people and agents claim and finish work.",
-  keywords: ["tasks","kanban","todo","project-management","agents","mcp","cli","collaboration"],
-  version: VERSION,
-});
+  Board,
+  Claim,
+  Column,
+  Principal,
+  PrincipalKind,
+  ProgressEntry,
+  Task,
+  TaskErrorCode,
+  TaskStatus,
+} from "./model.js";
+export { createMemoryStore, createFileStore } from "./store.js";
+export type { Collection, Store, Tx } from "./store.js";
+export { createTasks } from "./tasks.js";
+export type {
+  ClaimOptions,
+  MoveTarget,
+  NewBoard,
+  NewTask,
+  TaskFilter,
+  TaskPatch,
+  Tasks,
+  TasksOptions,
+} from "./tasks.js";
