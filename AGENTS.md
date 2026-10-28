@@ -2,39 +2,25 @@
 
 Task boards where people and agents claim and finish work.
 
-## Mental model
+## Model
 
-Text goes in. Stats or a route receipt come out. One core serves
-all three faces, so each face returns the same shape.
+- A board has ordered columns.
+- A task sits in one column. It has a title, description, labels, due date, and assignees.
+- Every write records the acting principal and its kind: `human`, `agent_of_human`, `agent_of_agent`, `agent`, or `user_token`.
+- A claim holds a task for a set time. Only the holder can release it.
 
-## The three faces
+## Claim rules
 
-- SDK: `import { summarizeText } from "agentic-tasks"`.
-- CLI: `npx agentic-tasks summary --text "..."`.
-- MCP: `npx agentic-tasks mcp`, then call a tool below.
-
-Keywords: tasks,kanban,todo,project-management,agents,mcp,cli,collaboration.
-
-## MCP tools
-
-| Tool | Use it for |
-| --- | --- |
-| summarize_text | Count chars, words, lines, top words. |
-| dispatch_text | Route one text. Pass dryRun to preview. |
-| get_cost_report | Read session cost totals. |
-
-## The loop
-
-1. Discover the tools with `tools/list`.
-2. Run `summarize_text` on a sample.
-3. Preview a route with `dispatch_text` and dryRun true.
-4. Run the real route when the preview looks right.
-5. Read `get_cost_report` and state the cost.
+1. A claim fails while another principal holds a live claim.
+2. A claim is live until its expiry instant. At that instant it has expired.
+3. The holder can claim again to renew the claim.
+4. A claim fails on a closed task.
+5. Only the holder can release. A release with no claim fails.
+6. Closing a task clears its claim.
+7. Two simultaneous claims: exactly one succeeds.
 
 ## Rules
 
-- Preview with dry run before each real dispatch.
-- Stop when a guard denies the call. State the reason.
-- Never retry a denied call with changed text to dodge a guard.
-- Report adapter errors as errors. Never present them as success.
-- State the cost report before you claim the task is done.
+- Read a task before you claim it.
+- Report every refused call as a failure, with its error code.
+- Never retry a refused claim in a loop. Wait for the holder or the expiry.

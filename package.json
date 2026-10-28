@@ -38,10 +38,6 @@
       "import": "./dist/index.js"
     }
   },
-  "bin": {
-    "agentic-tasks": "./dist/cli.js",
-    "agentic-tasks-mcp": "./dist/mcp-bin.js"
-  },
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
