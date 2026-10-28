@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { TaskError, type Principal, type PrincipalKind } from "./model.js";
-import { createFileStore } from "./store.js";
+import { createFileStore } from "./file-store.js";
 import { createTasks, type Tasks } from "./tasks.js";
 import { serveMcp } from "./mcp.js";
 

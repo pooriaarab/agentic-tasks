@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { TaskError, type Claim, type Principal, type Task } from "./model.js";
-import { createFileStore, createMemoryStore, type Store } from "./store.js";
+import { createMemoryStore, type Store } from "./store.js";
+import { createFileStore } from "./file-store.js";
 import { createTasks, type Tasks } from "./tasks.js";
 
 const ALICE: Principal = { id: "alice", kind: "human" };
