@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import {
   PRINCIPAL_KINDS,
   TaskError,
@@ -172,7 +171,7 @@ export function createTasks(options: TasksOptions): Tasks {
       const title = requireText(input.title, "title");
       const at = clock().toISOString();
       const board: Board = {
-        id: randomUUID(),
+        id: crypto.randomUUID(),
         title,
         columns: [],
         createdBy: { id: actor.id, kind: actor.kind },
@@ -197,7 +196,7 @@ export function createTasks(options: TasksOptions): Tasks {
         if (board.columns.some((column) => column.name === columnName)) {
           throw invalid(`board ${boardId} already has a column named ${columnName}`);
         }
-        board.columns.push({ id: randomUUID(), name: columnName });
+        board.columns.push({ id: crypto.randomUUID(), name: columnName });
         board.updatedAt = clock().toISOString();
         tx.put("boards", board);
         return board;
@@ -221,7 +220,7 @@ export function createTasks(options: TasksOptions): Tasks {
         requireColumn(board, columnId);
         const at = clock().toISOString();
         const task: Task = {
-          id: randomUUID(),
+          id: crypto.randomUUID(),
           boardId: board.id,
           title,
           description,
@@ -378,7 +377,7 @@ export function createTasks(options: TasksOptions): Tasks {
         const task = requireTask(tx, id);
         requireOpen(task);
         const entry: ProgressEntry = {
-          id: randomUUID(),
+          id: crypto.randomUUID(),
           taskId: task.id,
           note: text,
           by: { id: actor.id, kind: actor.kind },
