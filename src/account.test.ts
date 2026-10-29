@@ -2,6 +2,7 @@
 //  1. A subject with no id or no kind is refused. A context that names someone else is refused:
 //     it would export or erase another person's data.
 //     A context with more than one step in its chain acts for someone else, and is refused too.
+//     A one-step chain whose root is someone else is refused: roles belong to the root.
 //  2. Export holds only what the subject touched: tasks they made, changed, hold, or are assigned,
 //     and their own notes. Another person's board, tasks, and notes are never in it.
 //  3. Export is plain JSON: it survives a JSON round trip, and keeps the principal kind.
@@ -10,7 +11,8 @@
 //  6. A board that was shared to the subject with the owner role, but made by another, stays.
 //  7. A second erase counts zero. Erase leaves a second person's boards alone.
 //  8. A person and an agent with the same id are two subjects.
-//  9. The collection names stay stable, so a rename fails here before it breaks a host.
+//  9. A board with a corrupt creator is left alone. An erase that stops names the board it stopped at.
+// 10. The collection names stay stable, so a rename fails here before it breaks a host.
 import { describe, expect, it } from "vitest";
 import { createMemoryStore } from "agentic-identity";
 import { createTasks, tasksAccount, trustedContext, type Principal } from "./index.js";
@@ -46,6 +48,9 @@ describe("subject", () => {
     const acting = { tasks: deps(ANA).tasks, ctx: { ...ctxOf(ANA_BOT), chain: [{ id: "bob", kind: "human" as const }, { id: "ana", kind: "agent" as const }] } };
     await expect(tasksAccount.exportAccount(ANA_BOT, acting as never)).rejects.toThrow(/does not match/);
     await expect(tasksAccount.eraseAccount(ANA_BOT, acting as never)).rejects.toThrow(/does not match/);
+    const otherRoot = { tasks: deps(ANA).tasks, ctx: { ...ctxOf(ANA), chain: [{ id: "bob", kind: "human" as const }] } };
+    await expect(tasksAccount.exportAccount(ANA, otherRoot as never)).rejects.toThrow(/does not match/);
+    await expect(tasksAccount.eraseAccount(ANA, otherRoot as never)).rejects.toThrow(/does not match/);
     await expect(tasksAccount.exportAccount(ANA, {} as never)).rejects.toThrow("needs deps.tasks");
     await expect(tasksAccount.eraseAccount(ANA, undefined as never)).rejects.toThrow("needs deps.tasks");
   });
@@ -85,6 +90,23 @@ describe("exportAccount", () => {
 });
 
 describe("eraseAccount", () => {
+  it("skips a board with a corrupt creator, and names the board when an erase stops", async () => {
+    const store = createMemoryStore();
+    const tasks = createTasks({ store });
+    const deps = (p: Principal) => ({ tasks, ctx: ctxOf(p) });
+    const good = await board(tasks, ANA, "good");
+    const bad = await board(tasks, ANA, "bad");
+    const row = (await store.get("boards", bad.b.id))!;
+    await store.put("boards", bad.b.id, { ...row, createdBy: null });
+    expect(await tasksAccount.eraseAccount(ANA, deps(ANA))).toEqual({ boards: 1, tasks: 1, notes: 1 });
+    expect((await store.get("boards", bad.b.id))).not.toBeNull();
+    const failing = { ...tasks, eraseBoard: async () => { throw new Error("db down"); } };
+    const second = await board(tasks, ANA, "second");
+    const err = await tasksAccount.eraseAccount(ANA, { tasks: failing, ctx: ctxOf(ANA) }).catch((e) => e);
+    expect(err.message).toContain(second.b.id);
+    expect(err.message).not.toContain(good.b.id);
+  });
+
   it("erases the boards the subject made and owns, counts them, and is safe to run twice", async () => {
     const { tasks, deps } = setup();
     const { b } = await board(tasks, ANA, "ana");
