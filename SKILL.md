@@ -19,6 +19,15 @@ const board = await tasks.createBoard({ title: "Sprint" }, me);
 await tasks.shareBoard(board.id, { kind: "agent", id: "agent-1" }, "editor", me);
 ```
 
+## Use the remote client
+
+```js
+import { createClient } from "agentic-tasks/client";
+
+const tasks = createClient({ baseUrl: "https://tasks.example.com", token });
+await tasks.claim(taskId); // a refusal throws TasksApiError with code and status
+```
+
 ## Use the CLI
 
 ```sh
