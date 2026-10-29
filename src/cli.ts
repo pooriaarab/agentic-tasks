@@ -91,16 +91,13 @@ for (const spec of Object.values(COMMANDS)) {
 const COMMAND_WIDTH =
   Math.max(...Object.entries(COMMANDS).map(([name, spec]) => `${name} ${spec.args}`.trim().length)) + 2;
 
-// A flag that stands for an argument is the same value, never a second one.
-const USAGE_NOTE = "An <id> or <title> or <name> argument can be given as --board, --task, --title, or --name instead.";
-
 const USAGE = [
   `usage: agentic-tasks <command> [args] --as <id> --kind <kind> [--file <path>]`,
   "",
   "Every command but mcp needs --as and --kind. The kind is never defaulted.",
   "The store file is --file, or AGENTIC_TASKS_FILE, or ./agentic-tasks.json.",
   "Output is JSON.",
-  USAGE_NOTE,
+  "<board id>, <task id>, <title>, and <name> can be given as --board, --task, --title, and --name.",
   "",
   "commands:",
   ...Object.entries(COMMANDS).map(
@@ -110,6 +107,14 @@ const USAGE = [
   "agentic-tasks <command> --help prints one command. agentic-tasks --version prints the version.",
 ].join("\n");
 
+// Names each argument that has a flag form, so help never promises one that is missing.
+function flagForms(spec: CommandSpec): string[] {
+  const pairs = slotsOf(spec)
+    .filter((slot) => slot in SLOT_FLAGS)
+    .map((slot) => `<${slot}> as --${SLOT_FLAGS[slot]}`);
+  return pairs.length === 0 ? [] : ["", `Flag forms: ${pairs.join(", ")}. Give each once.`];
+}
+
 function commandUsage(name: string, spec: CommandSpec): string {
   const principal = spec.principal === false ? "" : " --as <id> --kind <kind>";
   const flags = spec.flags.map((flag) => ` [--${flag} <value>]`).join("");
@@ -117,7 +122,7 @@ function commandUsage(name: string, spec: CommandSpec): string {
     `usage: agentic-tasks ${`${name} ${spec.args}`.trim()}${principal}${flags} [--file <path>]`,
     "",
     spec.summary,
-    ...(slotsOf(spec).some((slot) => slot in SLOT_FLAGS) ? ["", USAGE_NOTE] : []),
+    ...flagForms(spec),
   ].join("\n");
 }
 
@@ -188,8 +193,11 @@ function bindArgs(args: ParsedArgs, spec: CommandSpec): Map<string, string> {
     if (args.positionals.includes(value)) throw twice(slot);
   }
   if (next < args.positionals.length) {
-    const slot = flagged.keys().next().value;
-    throw slot === undefined ? new UsageError(`unexpected argument ${args.positionals[next]}`) : twice(slot);
+    const given = [...flagged.keys()].map((slot) => `${slot} as --${SLOT_FLAGS[slot]}`);
+    throw new UsageError(
+      `unexpected argument ${args.positionals[next]}` +
+        (given.length === 0 ? "" : ` (already given: ${given.join(", ")})`),
+    );
   }
   return bound;
 }

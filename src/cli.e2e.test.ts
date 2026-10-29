@@ -284,19 +284,43 @@ describe("agentic-tasks CLI (built binary)", { timeout: 30_000 }, () => {
 
   it("refuses a value given both ways and names the argument", () => {
     for (const [args, word] of [
-      [["board", "Sprint", "--title", "Other"], "title"],
+      [["board", "Sprint", "--title", "Other"], "unexpected argument Sprint (already given: title as --title)"],
       [["list", "b1", "--board", "b1"], "board id"],
       [["get", "t1", "--task", "t1"], "task id"],
       [["column", "b1", "--board", "b1"], "board id"],
       [["new", "b1", "--board", "b1"], "board id"],
       [["progress", "t1", "--task", "t1"], "task id"],
       [["share", "b1", "bob", "--board", "b1"], "board id"],
-      [["new", "A", "B", "--board", "b1"], "board id"],
+      [["new", "A", "B", "--board", "b1"], "unexpected argument B (already given: board id as --board)"],
     ] as const) {
       const result = run([...args, ...ALICE]);
       expect(result.code).toBe(2);
-      expect(result.stderr).toContain(`give the ${word} once`);
+      expect(result.stderr).toContain(word.startsWith("unexpected") ? word : `give the ${word} once`);
     }
+  });
+
+  it("takes --task and --board on every command that has the argument", () => {
+    const { boardId, columnId } = makeBoard();
+    const task = (JSON.parse(run(["new", boardId, "T", ...ALICE]).stdout) as { id: string }).id;
+    expect(run(["update", "--task", task, "--title", "U", ...ALICE]).code).toBe(0);
+    expect(run(["move", "--task", task, "--column", columnId, ...ALICE]).code).toBe(0);
+    expect(run(["claim", task, ...ALICE]).code).toBe(0);
+    expect(run(["release", "--task", task, ...ALICE]).code).toBe(0);
+    expect(run(["delete", "--task", task, ...ALICE]).code).toBe(0);
+    const shared = run(["share", "--board", boardId, "carol", "viewer", "--subject-kind", "human", ...ALICE]);
+    expect(shared.code).toBe(0);
+    expect(run(["unshare", "--board", boardId, "carol", "--subject-kind", "human", ...ALICE]).code).toBe(0);
+    expect(run(["erase", "--board", boardId, ...ALICE]).code).toBe(0);
+  });
+
+  it("names only the flag forms a command has in its help", () => {
+    expect(run(["share", "--help"]).stdout).toContain("<board id> as --board. Give each once");
+    expect(run(["share", "--help"]).stdout).not.toContain("--subject ");
+    expect(run(["progress", "--help"]).stdout).toContain("<task id> as --task");
+    expect(run(["boards", "--help"]).stdout).not.toContain("Flag forms");
+    expect(run(["share", "b1", "bob", "editor", "extra", "--board", "b1x", ...ALICE]).stderr).toContain(
+      "unexpected argument extra",
+    );
   });
 
   it("refuses a flag repeated for an argument", () => {
