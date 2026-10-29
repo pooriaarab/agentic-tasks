@@ -242,7 +242,7 @@ Export the app from your Worker's entry file:
 export { default } from "agentic-tasks/worker";
 ```
 
-Add this to your Wrangler config. It sets the `nodejs_compat` flag. The store adapters use Node built-ins such as `Buffer`:
+Add this to your Wrangler config. It sets the `nodejs_compat` flag. The `agentic-identity` code that the Worker imports uses Node built-ins such as `Buffer`:
 
 ```jsonc
 {
@@ -271,14 +271,14 @@ Create the database in the EU with `npx wrangler d1 create agentic-tasks --locat
 | `TASKS_UNSAFE_LOCAL_TEST_AUTH` | No | `1` trusts the `X-Principal-Id` and `X-Principal-Kind` headers, on loopback requests only. Use it only for local dev and tests. A request that is not on loopback gets 403 `LOCAL_TEST_AUTH_NOT_LOOPBACK`. |
 | `TASKS_UNSAFE_LOCAL_REGION` | No | `1` lets `TASKS_REGION` be `unknown`, because local D1 reports no region. Local dev only. |
 
-Without test auth, the default export reads a bearer credential from the same D1 database.
+Without test auth, the default export reads a bearer credential from the same D1 database. A write that sends only a session cookie and no bearer token gets 403 `FORBIDDEN`.
 Run the `agentic-identity` Worker on that database to issue credentials. A request
 with no valid credential answers 401 `UNAUTHENTICATED`. If the store cannot do the credential check, the Worker answers 503 `STORE_BUSY` with `retry-after: 1`. A retry can succeed. On a region mismatch, a request with a credential gets the same 503, but a retry does not help. Check `TASKS_REGION` and the database location. A request with no credential gets 401 and never reads the store.
 
 The module also has these named exports:
 
 - `createApp(resolve, auth?)` builds the app. `resolve(env)` returns the `Tasks` to use. `auth` is an `Auth` from `agentic-identity`, or a function of `env` that returns one. When you pass `auth`, `TASKS_UNSAFE_LOCAL_TEST_AUTH` has no effect.
-- `tasksOnD1(env)` and `authOnD1(env)` are the default store and credential check on `DB`.
+- `tasksOnD1(env)` returns the default `Tasks` on `DB`. `authOnD1(env)` returns the default credential check on `DB`.
 - `localTestAuth` and `isLoopbackRequest` are the loopback test auth.
 
 To use another store or credential check, call `createApp` yourself. It still needs the `DB` binding and a valid `TASKS_REGION`. Without them it answers 503 before it calls your store. With your own `auth` and a D1 store, a region mismatch answers 500 `INTERNAL`. Install `agentic-identity` `^0.6.0` in your app. This package uses that version. The example imports its types:
