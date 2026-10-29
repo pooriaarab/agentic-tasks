@@ -166,11 +166,28 @@ describe("createClient requests", () => {
   });
 
   it("refuses a baseUrl that is not absolute or has a query or hash", () => {
-    for (const baseUrl of ["tasks.example.com", "https://h/?x=1", "https://h/#a"]) {
+    for (const baseUrl of ["tasks.example.com", "mailto:a@b", "ftp://h", "https://h/?x=1", "https://h/#a", "https://u:p@h"]) {
       expect(() => createClient({ baseUrl, token: "t" })).toThrow(TypeError);
     }
   });
 
+  it("fails a task whose status is not open or closed", async () => {
+    const task = { id: "t1", boardId: "b", status: "weird" };
+    const error = await fake(reply(200, JSON.stringify(task))).getTask("t1").then(() => undefined, (e: unknown) => e);
+    expect(error).toBeInstanceOf(TasksApiError);
+  });
+
+  it("does not follow a redirect", async () => {
+    let init: RequestInit | undefined;
+    const client = fake(async (_input, i) => {
+      init = i;
+      return new Response('{"id":"b","columns":[]}');
+    });
+    await client.getBoard("b");
+    expect(init?.redirect).toBe("error");
+  });
+
+  // Reads the file that tsup writes. ci:local builds before it tests.
   it("keeps Node and runtime imports out of the built client", () => {
     const built = readFileSync(new URL("../dist/client.js", import.meta.url), "utf8");
     expect(built).not.toMatch(/^\s*import\s/m);

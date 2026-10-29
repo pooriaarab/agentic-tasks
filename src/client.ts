@@ -22,21 +22,23 @@ export type ApiErrorCode =
   // The reply was not an API error body, for example from a proxy.
   | "UNKNOWN";
 
-const KNOWN_CODES: ReadonlySet<string> = new Set<ApiErrorCode>([
-  "NOT_FOUND",
-  "FORBIDDEN",
-  "INVALID_INPUT",
-  "CLAIM_HELD",
-  "NOT_HOLDER",
-  "TASK_CLOSED",
-  "UNAUTHENTICATED",
-  "STORE_BUSY",
-  "STORE_NOT_CONFIGURED",
-  "REGION_NOT_CONFIGURED",
-  "LOCAL_TEST_AUTH_NOT_LOOPBACK",
-  "INTERNAL",
-  "UNKNOWN",
-]);
+// Every ApiErrorCode must be a key here, so a new code fails the type check.
+const CODES: Record<ApiErrorCode, true> = {
+  NOT_FOUND: true,
+  FORBIDDEN: true,
+  INVALID_INPUT: true,
+  CLAIM_HELD: true,
+  NOT_HOLDER: true,
+  TASK_CLOSED: true,
+  UNAUTHENTICATED: true,
+  STORE_BUSY: true,
+  STORE_NOT_CONFIGURED: true,
+  REGION_NOT_CONFIGURED: true,
+  LOCAL_TEST_AUTH_NOT_LOOPBACK: true,
+  INTERNAL: true,
+  UNKNOWN: true,
+};
+const isKnownCode = (v: unknown): v is ApiErrorCode => typeof v === "string" && Object.hasOwn(CODES, v);
 
 // Thrown for every reply that is not a success. `code` is the API error code and
 // `status` is the HTTP status.
@@ -61,7 +63,9 @@ export interface ClientOptions {
 }
 
 // Every method takes an optional signal. An aborted call rejects with the
-// fetch AbortError, not a TasksApiError.
+// signal reason (an AbortError, or a TimeoutError for AbortSignal.timeout),
+// not a TasksApiError. A write that was aborted after it was sent may still
+// have applied: read the task before you try again.
 export interface CallOptions {
   signal?: AbortSignal;
 }
@@ -100,7 +104,11 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
 const hasId = (v: unknown) => isObject(v) && typeof v.id === "string";
 const SHAPES: Record<Shape, (v: unknown) => boolean> = {
   board: (v) => hasId(v) && Array.isArray((v as Board).columns),
-  task: (v) => hasId(v) && typeof (v as Task).boardId === "string" && typeof (v as Task).status === "string",
+  task: (v) =>
+    hasId(v) &&
+    typeof (v as Task).boardId === "string" &&
+    ((v as Task).status === "open" || (v as Task).status === "closed") &&
+    ((v as Task).claim === undefined || isObject((v as Task).claim?.holder)),
   tasks: (v) => Array.isArray(v) && v.every(SHAPES.task),
   note: (v) => hasId(v) && typeof (v as ProgressEntry).note === "string",
   notes: (v) => Array.isArray(v) && v.every(SHAPES.note),
@@ -122,8 +130,11 @@ export function createClient(options: ClientOptions): TasksClient {
   } catch {
     throw new TypeError("baseUrl must be an absolute URL");
   }
-  if (origin.search !== "" || origin.hash !== "") {
-    throw new TypeError("baseUrl must have no query or hash");
+  if (origin.protocol !== "https:" && origin.protocol !== "http:") {
+    throw new TypeError("baseUrl must be an http or https URL");
+  }
+  if (origin.search !== "" || origin.hash !== "" || origin.username !== "" || origin.password !== "") {
+    throw new TypeError("baseUrl must have no query, hash, or credentials");
   }
   const root = `${origin.origin}${origin.pathname.replace(/\/+$/, "")}/api/v1/tasks`;
   const token = options.token;
@@ -137,7 +148,7 @@ export function createClient(options: ClientOptions): TasksClient {
     method: string,
     path: string,
     body: unknown,
-    call: CallOptions | undefined,
+    callOptions: CallOptions | undefined,
     shape: Shape,
   ): Promise<T> {
     const headers: Record<string, string> = { authorization: `Bearer ${token}` };
@@ -146,7 +157,9 @@ export function createClient(options: ClientOptions): TasksClient {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
-      signal: call?.signal,
+      signal: callOptions?.signal,
+      // A redirect would send a write to another host. Fail instead.
+      redirect: "error",
     });
     const text = await response.text();
     let parsed: unknown;
@@ -157,7 +170,7 @@ export function createClient(options: ClientOptions): TasksClient {
     }
     if (!response.ok) {
       const error = (parsed as { error?: { code?: unknown; message?: unknown } } | undefined)?.error;
-      const code = KNOWN_CODES.has(error?.code as string) ? (error?.code as ApiErrorCode) : "UNKNOWN";
+      const code = isKnownCode(error?.code) ? error.code : "UNKNOWN";
       const message = typeof error?.message === "string" ? error.message : `HTTP ${response.status}`;
       throw new TasksApiError(code, response.status, message);
     }

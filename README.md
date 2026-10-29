@@ -71,7 +71,9 @@ try {
   `moveTask`, `claim`, `release`, `closeTask`, `progress`, and `listProgress`.
 - A refused call throws `TasksApiError` with the API error `code` and the HTTP `status`.
   A reply that is not an API error, or a success reply with the wrong shape, has the code `UNKNOWN`.
-- Each method takes `{ signal }` last. An aborted call rejects with the fetch abort error.
+- Each method takes `{ signal }` last. An aborted call rejects with the signal reason: `AbortError`, or `TimeoutError` for `AbortSignal.timeout`.
+  A write that was aborted after it was sent may still have applied. Read the task before you try again.
+- The client does not follow redirects.
 - The client never retries. A refused claim stays refused: wait for the holder or the expiry.
 
 ## Planned features

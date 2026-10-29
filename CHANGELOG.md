@@ -6,6 +6,12 @@ All notable changes to this package are in this file. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `agentic-tasks/client`: `createClient({ baseUrl, token, fetch? })`, a typed client for
+  the Worker HTTP API. It has one method for each route, throws `TasksApiError` with the
+  API error `code` and HTTP `status`, takes an `AbortSignal`, and never retries.
+
 ## [0.2.0] - 2026-10-29
 
 ### Breaking
