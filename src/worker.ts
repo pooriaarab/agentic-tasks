@@ -159,9 +159,26 @@ export function createApp(resolve: Resolve, auth?: Auth | ((env: Bindings) => Au
     const found = local ? await chosen.authenticate(c.req.raw) : await requirePrincipal(c.req.raw, chosen);
     if (found === null || found instanceof Response) {
       const status = found === null ? 401 : found.status;
-      const headers = status === 401 ? { "www-authenticate": "Bearer" } : undefined;
-      const body = status === 401 ? { code: "UNAUTHENTICATED", message: "Send a valid credential." } : { code: "FORBIDDEN", message: "Not allowed." };
-      return c.json({ error: body }, status as 401 | 403 | 503, headers);
+      if (status === 401) {
+        return c.json(
+          { error: { code: "UNAUTHENTICATED", message: "Send a valid credential." } },
+          401,
+          { "www-authenticate": "Bearer" },
+        );
+      }
+      // The credential check failed on the store, so the caller may retry.
+      if (status === 503) {
+        return c.json(
+          { error: { code: "STORE_BUSY", message: "The credential check is not available. Try again." } },
+          503,
+          { "retry-after": "1" },
+        );
+      }
+      // A write on a session cookie from an origin that is not allowed.
+      if (status === 403) {
+        return c.json({ error: { code: "FORBIDDEN", message: "Send the credential as a bearer token." } }, 403);
+      }
+      return c.json({ error: { code: "INTERNAL", message: "unexpected error" } }, 500);
     }
     const ctx = found;
     c.set("ctx", ctx);

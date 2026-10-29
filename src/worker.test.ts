@@ -1,3 +1,4 @@
+import { trustedContext } from "./principal.js";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { createMemoryAuth, createMemoryStore, type PrincipalContext } from "agentic-identity";
@@ -213,5 +214,25 @@ describe("region claim", () => {
     const db = { prepare: () => ({ bind: () => ({ all: async () => ({ results: [], meta: {} }) }) }) };
     const tasks = tasksOnD1({ DB: db, TASKS_REGION: "unknown", TASKS_UNSAFE_LOCAL_REGION: "1" } as never);
     await expect(tasks.getBoard("b", member)).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  const NO_FLAG = { DB: {}, TASKS_REGION: "eu" };
+
+  it("answers 503 STORE_BUSY with retry-after when the credential check throws", async () => {
+    const tasks = createTasks({ store: createMemoryStore({ region: "eu" }) });
+    const broken = { authenticate: async () => { throw new Error("D1 DB is overloaded"); } };
+    const app = createApp(() => tasks, broken);
+    const response = await app.request("/api/v1/tasks/boards/x", { headers: { authorization: "Bearer abc" } }, NO_FLAG);
+    expect(response.status).toBe(503);
+    expect(response.headers.get("retry-after")).toBe("1");
+    expect(((await response.json()) as { error: { code: string } }).error.code).toBe("STORE_BUSY");
+  });
+
+  it("answers 403 for a write that has no bearer credential", async () => {
+    const tasks = createTasks({ store: createMemoryStore({ region: "eu" }) });
+    const cookieAuth = { authenticate: async () => trustedContext("alice", "human") };
+    const app = createApp(() => tasks, cookieAuth);
+    const response = await app.request("/api/v1/tasks/boards", { method: "POST", body: "{}" }, NO_FLAG);
+    expect(response.status).toBe(403);
   });
 });
