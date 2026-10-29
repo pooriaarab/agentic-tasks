@@ -276,17 +276,17 @@ The package does not ship the schema. Set up the database in this order:
 | `TASKS_UNSAFE_LOCAL_TEST_AUTH` | No | `1` trusts the `X-Principal-Id` and `X-Principal-Kind` headers, on loopback requests only. Use it only for local dev and tests. A request that is not on loopback gets 403 `LOCAL_TEST_AUTH_NOT_LOOPBACK`. |
 | `TASKS_UNSAFE_LOCAL_REGION` | No | `1` lets `TASKS_REGION` be `unknown`, because local D1 reports no region. Set it only for local dev. Never set it in production. |
 
-Without test auth, the default export reads a bearer token, or a `session` cookie, from the same D1 database. Run the `agentic-identity` Worker on that database to issue credentials. The responses are:
+Without test auth, the default export takes a bearer token, or a `session` cookie, from the request and checks it against the same D1 database. Run the `agentic-identity` Worker on that database to issue credentials. The responses are:
 
 - No credential, or a malformed `Authorization` header: 401 `UNAUTHENTICATED`. The Worker does not read the store.
 - A token that is unknown, expired, or revoked: 401 `UNAUTHENTICATED`, after a store read.
 - A write that sends a valid session cookie and no bearer token: 403 `FORBIDDEN`.
 - The store cannot do the credential check: 503 `STORE_BUSY` with `retry-after: 1`. A retry can succeed.
-- Region mismatch: a request with a well-formed bearer token or a session cookie gets 503 `STORE_BUSY` too, with `retry-after: 1`. Do not retry it. Fix the region first: check `TASKS_REGION` and the database location.
+- Region mismatch: a request with a well-formed bearer token or a session cookie gets 503 `STORE_BUSY` too, with `retry-after: 1`. The client sees the same response as a busy store. So if `STORE_BUSY` keeps coming back after a few retries, check `TASKS_REGION` and the database location.
 
 The module also has these named exports:
 
-- `createApp(resolve, auth?)` builds the app. `resolve(env)` returns the `Tasks` to use. `auth` is an `Auth` from `agentic-identity`, or a function of `env` that returns one. When you pass `auth`, `TASKS_UNSAFE_LOCAL_TEST_AUTH` has no effect.
+- `createApp(resolve, auth?)` builds the app. `resolve(env)` returns the `Tasks` to use. `env` holds the Worker bindings. The `Bindings` type is not exported, so type `env` as `unknown` in your own code. `auth` is an `Auth` from `agentic-identity`, or a function of `env` that returns one. When you pass `auth`, `TASKS_UNSAFE_LOCAL_TEST_AUTH` has no effect.
 - `tasksOnD1(env)` returns the default `Tasks` on `DB`. `authOnD1(env)` returns the default credential check on `DB`.
 - `localTestAuth` and `isLoopbackRequest` are the loopback test auth.
 
