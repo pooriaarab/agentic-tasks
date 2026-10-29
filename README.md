@@ -274,7 +274,7 @@ The package does not ship the schema. Set up the database in this order:
 | `DB` | Yes | The D1 database. Without it every route under `/api/v1/tasks` except `health` answers 503 `STORE_NOT_CONFIGURED`. |
 | `TASKS_REGION` | Yes | `eu` or `us`, where the database lives. You set it. The Worker does not detect it. Without a valid value, every route under `/api/v1/tasks` except `health` answers 503 `REGION_NOT_CONFIGURED`. |
 | `TASKS_UNSAFE_LOCAL_TEST_AUTH` | No | `1` trusts the `X-Principal-Id` and `X-Principal-Kind` headers, on loopback requests only. Use it only for local dev and tests. A request that is not on loopback gets 403 `LOCAL_TEST_AUTH_NOT_LOOPBACK`. |
-| `TASKS_UNSAFE_LOCAL_REGION` | No | `1` lets `TASKS_REGION` be `unknown`, because local D1 reports no region. Local dev only. |
+| `TASKS_UNSAFE_LOCAL_REGION` | No | `1` lets `TASKS_REGION` be `unknown`, because local D1 reports no region. Set it only for local dev. Never set it in production. |
 
 Without test auth, the default export reads a bearer token, or a `session` cookie, from the same D1 database. Run the `agentic-identity` Worker on that database to issue credentials. The responses are:
 
@@ -282,7 +282,7 @@ Without test auth, the default export reads a bearer token, or a `session` cooki
 - A token that is unknown, expired, or revoked: 401 `UNAUTHENTICATED`, after a store read.
 - A write that sends a valid session cookie and no bearer token: 403 `FORBIDDEN`.
 - The store cannot do the credential check: 503 `STORE_BUSY` with `retry-after: 1`. A retry can succeed.
-- Region mismatch: a request with a token or session cookie gets 503 `STORE_BUSY` too. A retry does not help. Check `TASKS_REGION` and the database location.
+- Region mismatch: a request with a token or session cookie gets 503 `STORE_BUSY` too, with `retry-after: 1`. Do not retry it. Fix the region first: check `TASKS_REGION` and the database location.
 
 The module also has these named exports:
 
@@ -317,7 +317,7 @@ export default createApp(
 
 `npx agentic-tasks` runs the CLI. `npx agentic-tasks mcp` serves the MCP tools over stdio.
 
-Both use the store file that `--file` names, then `AGENTIC_TASKS_FILE`, then `./agentic-tasks.json`. The relative path is relative to the directory where the client starts the server. An MCP client config:
+Both use the store file that `--file` names, then `AGENTIC_TASKS_FILE`, then `./agentic-tasks.json`. A relative path starts at the working directory: the shell for the CLI, or the directory where the MCP client starts the server. An MCP client config:
 
 ```json
 {
