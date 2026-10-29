@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { createServer } from "node:net";
 import { join } from "node:path";
+import { build } from "tsup";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient, TasksApiError, type TasksClient } from "./client.js";
 import { LOCAL_REGION, migrate, seedCredential, startWorker, stopWorker, waitForWorker } from "./worker-harness.js";
@@ -79,7 +80,8 @@ describe("createClient against the Worker", () => {
 
   it("shares, unshares, and erases a board", async () => {
     const board = await alice.createBoard({ title: "Shared" });
-    await refusal(bob.getBoard(board.id));
+    const denied = await refusal(bob.getBoard(board.id));
+    expect([denied.code, denied.status]).toEqual(["FORBIDDEN", 403]);
     await alice.shareBoard(board.id, { kind: "human", id: "bob" }, "viewer");
     expect((await bob.getBoard(board.id)).id).toBe(board.id);
     await alice.unshareBoard(board.id, { kind: "human", id: "bob" });
@@ -217,11 +219,38 @@ describe("createClient requests", () => {
     await expect(pending).rejects.toMatchObject({ name: "AbortError" });
   });
 
-  // Reads the file that tsup writes. ci:local builds before it tests.
-  it("keeps Node and runtime imports out of the built client", () => {
-    const built = readFileSync(new URL("../dist/client.js", import.meta.url), "utf8");
-    expect(built).not.toMatch(/^\s*import\s/m);
-    expect(built).not.toContain("node:");
+  it("keeps Node and runtime imports out of the client bundle", async () => {
+    const out = mkdtempSync(join(tmpdir(), "agentic-tasks-bundle-"));
+    try {
+      await build({ entry: { client: "src/client.ts" }, outDir: out, format: ["esm"], dts: false, silent: true, config: false });
+      const built = readFileSync(join(out, "client.js"), "utf8");
+      expect(built).not.toMatch(/^\s*import\s/m);
+      expect(built).not.toContain("node:");
+    } finally {
+      rmSync(out, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses an id that the URL parser would turn into another route", async () => {
+    let sent = 0;
+    const client = fake(async () => {
+      sent += 1;
+      return new Response("{}");
+    });
+    const calls = [
+      (id: string) => client.getBoard(id),
+      (id: string) => client.eraseBoard(id),
+      (id: string) => client.unshareBoard("b", { kind: "human", id }),
+      (id: string) => client.unshareBoard(id, { kind: "human", id: "x" }),
+      (id: string) => client.getTask(id),
+      (id: string) => client.claim(id),
+      (id: string) => client.closeTask(id),
+      (id: string) => client.progress(id, "n"),
+    ];
+    for (const id of ["", ".", "..", "%2e%2E", "%2E"]) {
+      for (const run of calls) await expect(run(id)).rejects.toBeInstanceOf(TypeError);
+    }
+    expect(sent).toBe(0);
   });
 
   it("refuses to build without a token", () => {

@@ -103,15 +103,23 @@ type Shape = "board" | "task" | "tasks" | "note" | "notes" | "shared" | "unshare
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 const hasId = (v: unknown) => isObject(v) && typeof v.id === "string";
+const isPrincipal = (v: unknown) => isObject(v) && typeof v.id === "string" && typeof v.kind === "string";
+const isClaim = (v: unknown) =>
+  isObject(v) && isPrincipal(v.holder) && typeof v.claimedAt === "string" && typeof v.expiresAt === "string";
 const SHAPES: Record<Shape, (v: unknown) => boolean> = {
-  board: (v) => hasId(v) && Array.isArray((v as Board).columns),
+  board: (v) =>
+    hasId(v) && Array.isArray((v as Board).columns) && (v as Board).columns.every(hasId),
   task: (v) =>
     hasId(v) &&
     typeof (v as Task).boardId === "string" &&
     ((v as Task).status === "open" || (v as Task).status === "closed") &&
-    ((v as Task).claim === undefined || isObject((v as Task).claim?.holder)),
+    ((v as Task).claim === undefined || isClaim((v as Task).claim)),
   tasks: (v) => Array.isArray(v) && v.every(SHAPES.task),
-  note: (v) => hasId(v) && typeof (v as ProgressEntry).note === "string",
+  note: (v) =>
+    hasId(v) &&
+    typeof (v as ProgressEntry).note === "string" &&
+    typeof (v as ProgressEntry).taskId === "string" &&
+    typeof (v as ProgressEntry).seq === "number",
   notes: (v) => Array.isArray(v) && v.every(SHAPES.note),
   shared: (v) => isObject(v) && v.shared === true,
   unshared: (v) => isObject(v) && v.unshared === true,
@@ -143,7 +151,14 @@ export function createClient(options: ClientOptions): TasksClient {
   // A custom fetch is called as a plain function, so a bound method works too.
   const send = (input: string, init: RequestInit) =>
     options.fetch === undefined ? globalThis.fetch(input, init) : options.fetch(input, init);
-  const seg = encodeURIComponent;
+  // A segment of "", ".", or ".." is dropped or resolved by the URL parser, so the
+  // call would go to another route. Refuse it, with its encoded forms.
+  const seg = (value: string): string => {
+    if (typeof value !== "string" || /^(?:\.|%2e){0,2}$/i.test(value)) {
+      throw new TypeError("an id must be a non-empty string that is not . or ..");
+    }
+    return encodeURIComponent(value);
+  };
 
   async function call<T>(
     method: string,
@@ -185,7 +200,7 @@ export function createClient(options: ClientOptions): TasksClient {
   const member = (boardId: string, subject: { kind: MemberKind; id: string }) =>
     `/boards/${seg(boardId)}/members/${seg(subject.kind)}/${seg(subject.id)}`;
 
-  return {
+  const methods: TasksClient = {
     createBoard: (input, o) => call("POST", "/boards", input, o, "board"),
     getBoard: (id, o) => call("GET", `/boards/${seg(id)}`, undefined, o, "board"),
     addColumn: (id, name, o) => call("POST", `/boards/${seg(id)}/columns`, { name }, o, "board"),
@@ -214,4 +229,13 @@ export function createClient(options: ClientOptions): TasksClient {
     progress: (id, note, o) => call("POST", `/tasks/${seg(id)}/progress`, { note }, o, "note"),
     listProgress: (id, o) => call("GET", `/tasks/${seg(id)}/progress`, undefined, o, "notes"),
   };
+
+  // A refused id throws inside a method, before any request. Every method returns a
+  // promise, so the caller sees a rejection, not a throw.
+  return Object.fromEntries(
+    Object.entries(methods).map(([name, method]) => [
+      name,
+      async (...args: unknown[]) => (method as (...a: unknown[]) => Promise<unknown>)(...args),
+    ]),
+  ) as unknown as TasksClient;
 }
