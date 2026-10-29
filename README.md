@@ -193,14 +193,14 @@ One package gives you each way in:
 
 The package has these entries. The build writes each one to `dist/`.
 
-| Import | What it is | Where it is described |
+| Entry | What it is | Where it is described |
 |---|---|---|
 | `agentic-tasks` | The library: `createTasks`, `createFileStore`, `tasksAccount`, `trustedContext`, types, `TaskError`, `PRINCIPAL_KINDS`, and `VERSION`. | [Library](#library) |
 | `agentic-tasks/client` | A typed client for the Worker HTTP API. | [SDK](#sdk) |
 | `agentic-tasks/worker` | The HTTP API as a Hono app for a Cloudflare Worker. | [Worker](#worker) |
 | `agentic-tasks/ui` | `mount`, which renders the task UI in your page. | [Mount the UI](#mount-the-ui-in-your-app) |
 | `agentic-tasks/ui.css` | The styles for `agentic-tasks/ui`. | [Mount the UI](#mount-the-ui-in-your-app) |
-| `agentic-tasks` (bin) | The CLI. `agentic-tasks mcp` serves the MCP tools. | [CLI and MCP](#cli-and-mcp) |
+| `npx agentic-tasks` (bin) | The CLI. `agentic-tasks mcp` serves the MCP tools. | [CLI and MCP](#cli-and-mcp) |
 
 There is no `agentic-tasks/mcp` entry. Start the MCP server with `npx agentic-tasks mcp`.
 
