@@ -20,7 +20,8 @@ All notable changes to this package are in this file. The format follows
 - A grant that 0.1.0 stored is not honored. `migrateGrants` from `agentic-identity`
   can rewrite it only where the store holds a `principals` row for each subject, as
   the identity Worker does. The CLI file store holds none, so a 0.1.0 store file keeps
-  working only with 0.1.0. Start a new file for 0.2.0.
+  working only with 0.1.0. 0.2.0 opens a 0.1.0 file, but refuses every board call on
+  it with `FORBIDDEN`. Start a new file for 0.2.0.
 - `TASKS_UNSAFE_TRUST_HEADERS` is gone. The Worker reads bearer credentials from the
   D1 store with the `agentic-identity` `Auth`. `TASKS_UNSAFE_LOCAL_TEST_AUTH=1` trusts
   principal headers for local tests, and refuses a request that does not name
@@ -30,8 +31,10 @@ All notable changes to this package are in this file. The format follows
 
 - `eraseBoard`, the CLI `erase`, the MCP tool `erase_board`, and `DELETE /boards/:id`.
   They remove the board and its tasks and notes. They call `deleteResource`, which also
-  removes the grants, invites, links, and audit entries of the board. Only an owner can
-  erase. A failed erase can run again.
+  removes the grants, invites, and links of the board, and most of its audit entries:
+  an entry written at the moment of the erase can stay. Only an owner can erase. An
+  erase that stops after a failed write can run again. An erase is refused when the
+  board has more than 100 owners, and the tasks and notes are already gone then.
 
 ### Changed
 
