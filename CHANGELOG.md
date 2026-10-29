@@ -6,6 +6,18 @@ All notable changes to this package are in this file. The format follows
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-29
+
+### Added
+
+- `GET /api/v1/tasks/health` on the Worker returns `{ "ok": true }`. It needs no
+  auth and reads no store, so a monitor can check that the Worker runs.
+
+### Changed
+
+- `PRINCIPAL_KINDS` and the `PrincipalKind` type come from `agentic-identity` now,
+  not from a local copy. The five values are the same.
+
 ## [0.4.0] - 2026-10-29
 
 ### Added
