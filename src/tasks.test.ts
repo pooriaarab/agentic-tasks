@@ -630,6 +630,62 @@ describe("board roles", () => {
     await expect(code(tasks.updateTask(taskId, { title: "x" }, readOnly))).resolves.toBe("FORBIDDEN");
   });
 
+  // Failure list for admin audit entries, written before the fix:
+  //  a. An editor closes a task with no claim: no admin entry at all.
+  //  b. An editor holds a claim, then releases it or closes: no admin entry.
+  //  c. An editor is refused on another's claim (release or close): one real
+  //     admin denial, and the refusal itself still stands.
+  //  d. An owner who breaks another's claim: one admin allowed entry.
+  describe("admin audit entries", () => {
+    const adminEntries = async () =>
+      (await createSharing(store).listAudit(ALICE, boardId, { limit: 200 })).entries.filter(
+        (e) => e.principalId === "carol" && e.action === "admin",
+      );
+
+    beforeEach(async () => {
+      await tasks.shareBoard(boardId, "carol", "editor", ALICE);
+    });
+
+    it("writes none when a non-owner closes a task that has no claim", async () => {
+      await tasks.closeTask(taskId, CAROL);
+      expect(await adminEntries()).toEqual([]);
+    });
+
+    it("writes none when a non-owner releases a task that has no claim", async () => {
+      await expect(code(tasks.release(taskId, CAROL))).resolves.toBe("NOT_HOLDER");
+      expect(await adminEntries()).toEqual([]);
+    });
+
+    it("writes none when a non-owner holder releases or closes its own claim", async () => {
+      await tasks.claim(taskId, CAROL);
+      await tasks.release(taskId, CAROL);
+      await tasks.claim(taskId, CAROL);
+      await tasks.closeTask(taskId, CAROL);
+      expect(await adminEntries()).toEqual([]);
+    });
+
+    it("writes one denial when a non-owner is refused another's claim", async () => {
+      await tasks.claim(taskId, ALICE);
+      await expect(code(tasks.release(taskId, CAROL))).resolves.toBe("NOT_HOLDER");
+      expect(await adminEntries()).toMatchObject([{ outcome: "denied" }]);
+      await expect(code(tasks.closeTask(taskId, CAROL))).resolves.toBe("CLAIM_HELD");
+      expect(await adminEntries()).toMatchObject([{ outcome: "denied" }, { outcome: "denied" }]);
+    });
+
+    it("writes one allowed entry when an owner breaks another's claim", async () => {
+      const mine = async () =>
+        (await createSharing(store).listAudit(ALICE, boardId, { limit: 200 })).entries.filter(
+          (e) => e.principalId === "alice" && e.action === "admin",
+        );
+      await tasks.claim(taskId, CAROL);
+      const before = (await mine()).length;
+      await tasks.release(taskId, ALICE);
+      const after = await mine();
+      expect(after).toHaveLength(before + 1);
+      expect(after.every((e) => e.outcome === "allowed")).toBe(true);
+    });
+  });
+
   it("needs the board:write scope to make a board", async () => {
     const narrow = { ...ALICE, scopes: ["board:read"] };
     await expect(code(tasks.createBoard({ title: "No" }, narrow))).resolves.toBe("FORBIDDEN");
