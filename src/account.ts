@@ -18,8 +18,8 @@ export interface TasksAccount {
   id: "tasks";
   /** Collections: `boards` (each with the subject's `role`), `tasks` (the ones the subject made, changed, holds, or is assigned to), and `notes` (the subject's own). */
   exportAccount(subject: Principal, deps: TasksAccountDeps): Promise<Record<"boards" | "tasks" | "notes", JsonRecord[]>>;
-  /** Erases the boards the subject created and still owns, with their tasks and notes. Counts by `boards`, `tasks`, and `notes`. The tasks and notes of other people on those boards go too, and are counted. A failure names the board id, so it can be erased by id. A subject that is an agent needs a one-step context rooted in itself (as `trustedContext` makes): a delegated chain is refused. */
-  eraseAccount(subject: Principal, deps: TasksAccountDeps): Promise<Record<string, number>>;
+  /** Erases the boards the subject created and still owns, with their tasks and notes. Counts by `boards`, `tasks`, and `notes`. The tasks and notes of other people on those boards go too, and are counted. A failure names the board id. A repeat finds the board again and counts what is left, so a count is the sum of the runs. A subject that is an agent needs a one-step context rooted in itself (as `trustedContext` makes): a delegated chain is refused. */
+  eraseAccount(subject: Principal, deps: TasksAccountDeps): Promise<Record<"boards" | "tasks" | "notes", number>>;
 }
 
 // Through JSON, so the records are what a file would hold: a key with no value is dropped, not left as `undefined`.
@@ -56,24 +56,27 @@ export const tasksAccount: TasksAccount = {
     const counts = { boards: 0, tasks: 0, notes: 0 };
     // The export names the role of each board. Only a board the subject made and still owns goes: a board shared with them stays.
     // A board row with no valid `createdBy` is skipped, so a corrupt row is never erased by guess.
-    // The counts are read just before each erase, so a task added in between goes uncounted.
+    // Each task goes first, with its notes, and the board last. `eraseBoard` deletes the board row before its tasks, so a stop
+    // inside it would hide the board from the next run. Here a stop leaves the board row in place, and the next run finds it and goes on.
     for (const { board, role } of (await tasks.exportData(ctx)).boards) {
       const by = board.createdBy as Partial<Principal> | null | undefined;
       if (role !== "owner" || by?.id !== subject.id || by?.kind !== subject.kind) continue;
-      let rows: Task[] = [];
-      let notes = 0;
       try {
-        // A task row with no id cannot own a note query, and `exportData` skips it too: it is erased with the board but not counted.
-        rows = (await tasks.listTasks({ boardId: board.id }, ctx)).filter((t) => typeof t.id === "string" && t.id !== "");
-        for (const task of rows) notes += (await tasks.listProgress(task.id, ctx)).length;
+        const rows: Task[] = await tasks.listTasks({ boardId: board.id }, ctx);
+        // A task row with no id cannot be deleted by id. Stop before anything goes, so a retry stops the same way and never reads as done.
+        if (rows.some((t) => typeof t.id !== "string" || t.id === "")) throw new Error("a task row has no id");
+        for (const task of rows) {
+          const notes = (await tasks.listProgress(task.id, ctx)).length;
+          await tasks.deleteTask(task.id, ctx);
+          counts.tasks += 1;
+          counts.notes += notes;
+        }
         await tasks.eraseBoard(board.id, ctx);
+        counts.boards += 1;
       } catch (cause) {
-        // The board row may already be gone, and then the next run cannot find the board. The id is not personal data.
+        // The board id is not personal data. A run that is repeated finds the board again and counts only what is left.
         throw new Error(`erase stopped at board ${board.id}: ${counts.boards} boards, ${counts.tasks} tasks, and ${counts.notes} notes were erased before it`, { cause });
       }
-      counts.boards += 1;
-      counts.tasks += rows.length;
-      counts.notes += notes;
     }
     return counts;
   },
