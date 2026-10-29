@@ -9,8 +9,8 @@ Task boards where people and agents claim and finish work.
 
 > Status: early. The library, CLI, and MCP server use the shared `Store` port
 > from `agentic-identity`. The CLI keeps data in a local JSON file.
-> The HTTP API runs as a Worker, but it has no authentication yet. The package
-> is not on npm yet.
+> The HTTP API runs as a Worker on a D1 database, but it has no authentication
+> yet. The package is not on npm yet.
 
 > [!CAUTION]
 > Do not expose the HTTP API to the public internet. The Worker trusts the
@@ -45,17 +45,31 @@ npm ci
 npm run build && npm run typecheck && npm test
 ```
 
-Run the HTTP API on your machine only:
+Run the HTTP API on your machine only. Wrangler keeps a local D1 database:
 
 ```sh
-WRANGLER_SEND_METRICS=false npx wrangler dev --var TASKS_UNSAFE_TRUST_HEADERS:1
+export WRANGLER_SEND_METRICS=false
+npx wrangler d1 migrations apply DB --local
+npx wrangler dev --var TASKS_UNSAFE_TRUST_HEADERS:1
 ```
+
+Deploy to a database in the EU. The location cannot change later:
+
+```sh
+npx wrangler d1 create agentic-tasks --location weur
+# Put the database id in wrangler.jsonc, then:
+npx wrangler d1 migrations apply DB --remote
+```
+
+`TASKS_REGION` in `wrangler.jsonc` is your claim about where the database
+lives (`eu` or `us`). The Worker answers 503 until it holds a valid region.
+The store also refuses a query that D1 reports as served outside that region.
+Every Worker instance reads the same database, so a claim taken in one instance
+is refused in all of them.
 
 ## Limits
 
 - The HTTP API has no authentication. It trusts the principal headers.
-- The Worker keeps state in memory. Each instance has its own tasks and claims,
-  so the claim rules do not hold across instances.
 - The JSON file store works on one machine. Do not put the file on a network share.
 - The CLI file format changed. It does not read files from earlier releases.
 - Two tasks made at the same moment in one column can share a position. Two notes

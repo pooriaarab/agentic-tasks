@@ -359,6 +359,20 @@ describe.each(backends)("boards, columns, and tasks on the %s store", (_name, op
     await h.cleanup();
   });
 
+  it("still lists a task whose stored position is bad, and numbers new tasks from the good ones", async () => {
+    const board = await h.tasks.createBoard({ title: "Sprint" }, ALICE);
+    await h.tasks.addColumn(board.id, "Todo", ALICE);
+    const first = await h.tasks.createTask({ boardId: board.id, title: "one" }, ALICE);
+    await h.store.transaction(async (tx) => {
+      const row = (await tx.get("tasks", first.id))!;
+      await tx.put("tasks", first.id, { ...row, position: "abc" });
+    });
+    const second = await h.tasks.createTask({ boardId: board.id, title: "two" }, ALICE);
+    expect(second.position).toBe(0);
+    const listed = await h.tasks.listTasks({ boardId: board.id });
+    expect(listed.map((task) => task.title).sort()).toEqual(["one", "two"]);
+  });
+
   it("puts a new task in the first column", async () => {
     const board = await h.tasks.createBoard({ title: "Sprint" }, ALICE);
     const todo = await h.tasks.addColumn(board.id, "Todo", ALICE);
