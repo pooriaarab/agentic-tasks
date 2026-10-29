@@ -104,8 +104,8 @@ is refused in all of them.
   away at that moment can still finish the call that began before.
 - The JSON file store works on one machine. Do not put the file on a network share.
 - The CLI file format changed. It does not read files from earlier releases.
-- Two tasks made at the same moment in one column can share a position. Two notes
-  made at the same moment can share a `seq`. Ids break the tie.
+- A move with a position that you name can share it with another task. Ids break
+  the tie. Positions and note numbers that the package picks are always different.
 - Tasks use any `Store` that passes the `agentic-identity` contract suite. Pass a
   `Store` to `createTasks`. `createFileStore` is the file adapter. Use
   `createMemoryStore` from `agentic-identity` in tests.
