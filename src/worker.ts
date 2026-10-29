@@ -43,14 +43,19 @@ interface Bindings {
   DB?: D1Like;
   // Where the database lives. It is a claim that the operator makes: "eu" or "us".
   TASKS_REGION?: string;
+  // Local dev only. Lets TASKS_REGION be "unknown". Local D1 reports no served
+  // region, so the store cannot check a claim there. Never set it in production.
+  TASKS_UNSAFE_LOCAL_REGION?: string;
 }
 
 // The region has no default, and "unknown" is not a place. A Worker with no
-// valid region claim refuses to serve, as the trust flag does.
+// valid region claim refuses to serve, as the trust flag does. The one exception
+// is local dev with TASKS_UNSAFE_LOCAL_REGION=1.
 function regionOf(env: Bindings): Region | undefined {
   try {
     const region = parseRegion(env.TASKS_REGION);
-    return region === "unknown" ? undefined : region;
+    if (region === "unknown") return env.TASKS_UNSAFE_LOCAL_REGION === "1" ? region : undefined;
+    return region;
   } catch {
     return undefined;
   }

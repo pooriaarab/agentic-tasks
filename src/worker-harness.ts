@@ -19,6 +19,10 @@ export function migrate(persistDir: string): void {
   if (result.status !== 0) throw new Error(`migration failed: ${result.stdout}${result.stderr}`);
 }
 
+// Local D1 reports no served region, so the store cannot check a claim. Local
+// Workers run with TASKS_UNSAFE_LOCAL_REGION=1 and an "unknown" region.
+export const LOCAL_REGION = ["TASKS_REGION:unknown", "TASKS_UNSAFE_LOCAL_REGION:1"];
+
 export function startWorker(port: number, persistDir: string, vars: string[]): ChildProcess {
   const child = spawn(
     process.execPath,

@@ -18,7 +18,8 @@ Task boards where people and agents claim and finish work.
 > the `X-Principal-Id` and `X-Principal-Kind` headers. Any caller can name any
 > person or agent, and the role of that name decides what the call may do. The
 > Worker answers 503 until you set `TASKS_UNSAFE_TRUST_HEADERS=1`. Use it for
-> local dev only. It goes away when the identity Worker API (`agentic-identity`
+> local dev only. `TASKS_UNSAFE_LOCAL_REGION=1` skips the region check of the
+> database. Use it for local dev only. It goes away when the identity Worker API (`agentic-identity`
 > 0.2.0) can resolve a credential: pass that `Auth` to `createApp`, and the flag
 > and the headers stop mattering.
 
@@ -72,8 +73,12 @@ Run the HTTP API on your machine only. Wrangler keeps a local D1 database:
 ```sh
 export WRANGLER_SEND_METRICS=false
 npx wrangler d1 migrations apply DB --local
-npx wrangler dev --var TASKS_UNSAFE_TRUST_HEADERS:1
+npx wrangler dev --var TASKS_UNSAFE_TRUST_HEADERS:1 --var TASKS_REGION:unknown --var TASKS_UNSAFE_LOCAL_REGION:1
 ```
+
+Local D1 reports no served region, so the store cannot check a region claim
+there. `TASKS_UNSAFE_LOCAL_REGION=1` lets the Worker run with region `unknown`.
+Use it for local dev only. Never set it in production.
 
 Deploy to a database in the EU. The location cannot change later:
 
@@ -86,6 +91,7 @@ npx wrangler d1 migrations apply DB --remote
 `TASKS_REGION` in `wrangler.jsonc` is your claim about where the database
 lives (`eu` or `us`). The Worker answers 503 until it holds a valid region.
 The store also refuses a query that D1 reports as served outside that region.
+Production D1 reports the region for each query. Local D1 does not.
 Every Worker instance reads the same database, so a claim taken in one instance
 is refused in all of them.
 
