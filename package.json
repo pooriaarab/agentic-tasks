@@ -53,6 +53,7 @@
   "scripts": {
     "build": "tsup && node scripts/build-ui.mjs",
     "prepack": "npm run clean && npm run build",
+    "deploy:demo": "npm run build && WRANGLER_SEND_METRICS=false wrangler deploy --config wrangler.demo.jsonc",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "clean": "rm -rf dist",
