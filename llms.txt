@@ -6,6 +6,7 @@ Keywords: tasks,kanban,todo,project-management,agents,mcp,cli,collaboration.
 
 - SDK: import { createTasks, createFileStore, trustedContext } from "agentic-tasks".
 - Remote SDK: import { createClient, TasksApiError } from "agentic-tasks/client". createClient({ baseUrl, token, fetch? }) calls the Worker API with one method per route. A refused call throws TasksApiError with code and status. It never retries.
+- UI component: mount(element, { baseUrl, getToken, principal, boardId }) from "agentic-tasks/ui", with "agentic-tasks/ui.css". It returns { update, unmount }. React 19 is an optional peer dependency.
 - Access: board roles (viewer, commenter, editor, owner) from agentic-identity.
 - Claim rules: AGENTS.md in the repository.
 

@@ -6,7 +6,18 @@ const pkg = JSON.parse(
 ) as { version: string };
 
 export default defineConfig({
-  entry: ["src/index.ts", "src/cli.ts", "src/client.ts", "src/worker.ts"],
+  // Named entries, so `ui/embed.tsx` lands next to the others as `dist/embed.js`.
+  entry: {
+    index: "src/index.ts",
+    cli: "src/cli.ts",
+    client: "src/client.ts",
+    worker: "src/worker.ts",
+    embed: "ui/embed.tsx",
+  },
+  // The UI fonts are package files, copied next to the bundle.
+  loader: { ".woff2": "file" },
+  // React and react-dom are peer dependencies and stay out of the bundle.
+  external: ["react", "react-dom"],
   format: ["esm"],
   dts: true,
   clean: true,

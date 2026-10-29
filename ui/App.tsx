@@ -10,6 +10,7 @@ import {
   useTheme,
   type ThemePreference,
 } from "agentic-design/react";
+import type { TasksClient } from "../src/client.js";
 import { PRINCIPAL_KINDS, type PrincipalKind } from "../src/model.js";
 import { personOf } from "./people.js";
 import { BoardView } from "./BoardView.js";
@@ -78,13 +79,12 @@ function ConnectForm({ onConnect }: { onConnect: (s: Session) => void }) {
   );
 }
 
-function Lists({ session, lists, setLists, onOpen }: {
-  session: Session;
+export function Lists({ client, lists, setLists, onOpen }: {
+  client: TasksClient;
   lists: SavedList[];
   setLists: (lists: SavedList[]) => void;
   onOpen: (id: string) => void;
 }) {
-  const client = useMemo(() => makeClient(session), [session]);
   const [title, setTitle] = useState("");
   const [openId, setOpenId] = useState("");
   const [busy, setBusy] = useState(false);
@@ -191,7 +191,7 @@ export function App() {
       {session === null || client === null ? (
         <ConnectForm onConnect={connect} />
       ) : boardId === null ? (
-        <Lists session={session} lists={lists} setLists={setLists} onOpen={open} />
+        <Lists client={client} lists={lists} setLists={setLists} onOpen={open} />
       ) : (
         <BoardView key={boardId} client={client} session={session} boardId={boardId}
           onLoaded={(b) => setLists(rememberList({ id: b.id, title: b.title }))} />

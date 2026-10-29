@@ -166,6 +166,33 @@ The UI limits:
 - The API keeps only the last writer of a task. If a person changes a task after an agent did, the mark for the agent change goes away. An agent that created a task stays marked.
 - The UI does not show progress notes or manage sharing.
 
+### Mount the UI in your app
+
+`agentic-tasks/ui` renders the task UI inside your own page. It needs no framework in your app. You give it
+an element, the Worker origin, a function that returns the bearer token, and the principal who uses the UI.
+`mount` returns a handle.
+
+```ts
+import { mount } from "agentic-tasks/ui";
+import "agentic-design/styles.css";
+import "agentic-tasks/ui.css";
+
+const ui = mount(document.getElementById("tasks")!, {
+  baseUrl: "https://tasks.example.com",
+  getToken: async () => await myAuth.token(),   // called before every request
+  principal: { id: "ada", kind: "human" },
+  // boardId: "b_123",                          // open this list first
+});
+
+ui.update({ baseUrl, getToken, principal, boardId: "other" });  // show another list
+ui.unmount();                                                   // remove the UI
+```
+
+The principal needs an `id` and a `kind`. A missing or unknown `kind` throws a `TypeError`. An empty token
+fails the call, and the UI shows the error. The server still checks every write against the token. The UI
+remembers the lists it opened in `localStorage`. `react` and `react-dom` (version 19) are optional peer
+dependencies. The web UI that the Worker serves uses the same components.
+
 ## Develop
 
 ```sh
