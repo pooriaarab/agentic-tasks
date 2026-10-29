@@ -1,6 +1,6 @@
 {
   "name": "agentic-tasks",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Task boards where people and agents claim and finish work.",
   "keywords": [
     "tasks",
@@ -21,7 +21,7 @@
   "type": "module",
   "private": false,
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "files": [
     "dist"
@@ -43,13 +43,14 @@
   },
   "scripts": {
     "build": "tsup",
+    "prepack": "npm run clean && npm run build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "clean": "rm -rf dist",
     "ci:local": "npm run build && npm run typecheck && npm test"
   },
   "dependencies": {
-    "agentic-identity": "^0.1.0",
+    "agentic-identity": "^0.3.0",
     "@modelcontextprotocol/sdk": "^1.12.0",
     "hono": "^4.13.14",
     "zod": "^3.25.0"

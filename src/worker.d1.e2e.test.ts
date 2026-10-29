@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { migrate, startWorker, stopWorker, waitForWorker } from "./worker-harness.js";
+import { LOCAL_REGION, migrate, startWorker, stopWorker, waitForWorker } from "./worker-harness.js";
 
 // Two Worker instances, each its own `wrangler dev` process, on one local D1
 // database. Failure list, written before the test:
@@ -44,9 +44,9 @@ describe("two Worker instances on one D1 database", () => {
   async function startBoth() {
     // Started one after the other: two wrangler processes that boot together
     // collide, and one dies. This holds even on different ports and directories.
-    one = startWorker(PORT_ONE, persist, [TRUST]);
+    one = startWorker(PORT_ONE, persist, [TRUST, ...LOCAL_REGION]);
     await waitForWorker(base(PORT_ONE), one);
-    two = startWorker(PORT_TWO, persist, [TRUST]);
+    two = startWorker(PORT_TWO, persist, [TRUST, ...LOCAL_REGION]);
     await waitForWorker(base(PORT_TWO), two);
   }
 

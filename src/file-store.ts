@@ -6,6 +6,7 @@ import {
   assertCollection,
   assertField,
   assertId,
+  StoreConflictError,
   parseRegion,
   type AdapterOptions,
   type Doc,
@@ -340,7 +341,7 @@ export function createFileStore(path: string, options: AdapterOptions = {}): Sto
             : await commit(tx.seen, tx.writes.values());
         if (ok) return result;
       }
-      throw new Error("transaction kept conflicting");
+      throw new StoreConflictError("transaction kept conflicting");
     },
   };
 }

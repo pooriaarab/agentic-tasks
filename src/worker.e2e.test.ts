@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { migrate, startWorker, stopWorker, waitForWorker } from "./worker-harness.js";
+import { LOCAL_REGION, migrate, startWorker, stopWorker, waitForWorker } from "./worker-harness.js";
 
 // The real Worker under `wrangler dev`, on a local D1 database.
 const PERSIST = mkdtempSync(join(tmpdir(), "agentic-tasks-e2e-"));
@@ -97,7 +97,7 @@ describe("agentic-tasks Worker over wrangler dev", () => {
   let server: ChildProcess;
 
   beforeAll(async () => {
-    server = startWorker(PORT, PERSIST, TRUST_FLAG);
+    server = startWorker(PORT, PERSIST, [...TRUST_FLAG, ...LOCAL_REGION]);
     await waitForWorker(BASE, server);
   }, 120_000);
 

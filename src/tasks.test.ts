@@ -646,7 +646,7 @@ describe("board roles", () => {
       scopes: ["board:write"],
     };
     await tasks.claim(taskId, agent);
-    const audit = await createSharing(store).listAudit(ALICE, boardId);
+    const { entries: audit } = await createSharing(store).listAudit(ALICE, boardId);
     const entry = audit.find((e) => e.principalId === "bot-9");
     expect(entry).toMatchObject({ principalKind: "agent_of_human", machineMade: true, outcome: "allowed" });
     expect(entry?.chain.map((step) => step.id)).toEqual(["alice", "bot-9"]);
@@ -722,7 +722,7 @@ describe("board roles", () => {
       scopes: ["board:write"],
     };
     const made = await tasks.createBoard({ title: "By agent" }, agent);
-    const audit = await createSharing(store).listAudit(ALICE, made.id);
+    const { entries: audit } = await createSharing(store).listAudit(ALICE, made.id);
     expect(audit.find((e) => e.principalId === "bot-9")).toMatchObject({ machineMade: true, outcome: "allowed" });
   });
 });
