@@ -8,7 +8,7 @@ Task boards where people and agents claim and finish work.
 - A task sits in one column. It has a title, description, labels, due date, and assignees.
 - Every write records the acting principal and its kind: `human`, `agent_of_human`, `agent_of_agent`, `agent`, or `user_token`.
 - Every call carries a principal context from `agentic-identity`. A board has roles: viewer reads, commenter adds notes, editor changes tasks, owner shares. A refused call has the code `FORBIDDEN`.
-- A claim holds a task for a set time. Only the holder can release it.
+- A claim holds a task for a set time, up to one day. The holder or a board owner can release it.
 
 ## Faces
 
@@ -27,8 +27,8 @@ Task boards where people and agents claim and finish work.
 3. A claim whose expiry does not parse counts as live.
 4. The holder can claim again to renew the claim.
 5. A claim fails on a closed task.
-6. Only the holder can release. A release with no claim fails.
-7. While another principal holds a live claim, a close fails. The holder can close.
+6. Only the holder or a board owner can release. A release with no claim fails.
+7. While another principal holds a live claim, a close fails. The holder or a board owner can close.
 8. Closing a task clears its claim.
 9. Two simultaneous claims: exactly one succeeds.
 10. Moves, edits, and progress notes do not check the claim. Only claims, releases, and closes do.

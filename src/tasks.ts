@@ -22,6 +22,8 @@ import {
 } from "agentic-identity";
 
 const DEFAULT_CLAIM_TTL_MS = 30 * 60 * 1000;
+// A claim that lasts for years cannot be undone by a holder who has lost access.
+const MAX_CLAIM_TTL_MS = 24 * 60 * 60 * 1000;
 
 export interface TasksOptions {
   store: Store;
@@ -295,6 +297,12 @@ export function createTasks(options: TasksOptions): Tasks {
     return board;
   }
 
+  // An owner can break a claim that another principal holds. A holder who lost
+  // access cannot release it, and the owner must not be locked out by that.
+  async function isOwner(ctx: PrincipalContext, boardId: string): Promise<boolean> {
+    return (await sharing.can(ctx, "admin", boardId)).allowed;
+  }
+
   async function authorizeTask(ctx: PrincipalContext, action: Action, taskId: string): Promise<Task> {
     assertContext(ctx);
     const task = await requireTask(store, taskId);
@@ -318,6 +326,8 @@ export function createTasks(options: TasksOptions): Tasks {
       };
       // The creator becomes the owner. This needs the board:write scope.
       await shared(() => sharing.createResource(ctx, { id: board.id, type: "board" }));
+      // createResource writes no audit entry. This check records who made the board.
+      await sharing.can(ctx, "write", board.id);
       await putRow(store, "boards", board);
       return board;
     },
@@ -445,14 +455,15 @@ export function createTasks(options: TasksOptions): Tasks {
     },
 
     async closeTask(id, ctx) {
-      await authorizeTask(ctx, "write", id);
+      const checked = await authorizeTask(ctx, "write", id);
+      const owner = await isOwner(ctx, checked.boardId);
       const actor = actorOf(ctx);
       return store.transaction(async (tx) => {
         const task = await requireTask(tx, id);
         requireOpen(task);
         const now = clock();
         const at = now.toISOString();
-        if (heldByOther(task.claim, actor, now.getTime())) {
+        if (!owner && heldByOther(task.claim, actor, now.getTime())) {
           throw new TaskError("CLAIM_HELD", `task ${id} is held by another principal`);
         }
         task.status = "closed";
@@ -471,8 +482,8 @@ export function createTasks(options: TasksOptions): Tasks {
       await authorizeTask(ctx, "write", id);
       const principal = actorOf(ctx);
       const ttlMs = options.ttlMs ?? DEFAULT_CLAIM_TTL_MS;
-      if (!Number.isInteger(ttlMs) || ttlMs <= 0) {
-        throw invalid("ttlMs must be a positive integer");
+      if (!Number.isInteger(ttlMs) || ttlMs <= 0 || ttlMs > MAX_CLAIM_TTL_MS) {
+        throw invalid(`ttlMs must be a whole number from 1 to ${MAX_CLAIM_TTL_MS}`);
       }
       return store.transaction(async (tx) => {
         const task = await requireTask(tx, id);
@@ -496,12 +507,14 @@ export function createTasks(options: TasksOptions): Tasks {
     },
 
     async release(id, ctx) {
-      await authorizeTask(ctx, "write", id);
+      const checked = await authorizeTask(ctx, "write", id);
+      const owner = await isOwner(ctx, checked.boardId);
       const principal = actorOf(ctx);
       return store.transaction(async (tx) => {
         const task = await requireTask(tx, id);
-        if (!isWellFormed(task.claim) || !samePrincipal(task.claim.holder, principal)) {
-          throw new TaskError("NOT_HOLDER", `only the holder can release task ${id}`);
+        const holds = isWellFormed(task.claim) && samePrincipal(task.claim.holder, principal);
+        if (task.claim === undefined || !(holds || owner)) {
+          throw new TaskError("NOT_HOLDER", `only the holder or an owner can release task ${id}`);
         }
         delete task.claim;
         touch(task, principal, clock().toISOString());
@@ -542,6 +555,11 @@ export function createTasks(options: TasksOptions): Tasks {
 
     async shareBoard(boardId, subjectId, role, ctx) {
       await authorize(ctx, "admin", boardId);
+      // A grant replaces the old one without the last-owner check. An owner who
+      // lowers their own role could leave the board with no owner. Use unshare.
+      if (role !== "owner" && subjectId === ctx.chain[0]?.id) {
+        throw invalid("an owner cannot lower their own role. Make another owner first, then unshare");
+      }
       await shared(() => sharing.grant(ctx, boardId, subjectId, role));
     },
 

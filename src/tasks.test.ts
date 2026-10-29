@@ -651,4 +651,78 @@ describe("board roles", () => {
     expect(entry).toMatchObject({ principalKind: "agent_of_human", machineMade: true, outcome: "allowed" });
     expect(entry?.chain.map((step) => step.id)).toEqual(["alice", "bot-9"]);
   });
+
+  // Each guard is checked on its own: a refactor that drops or weakens one fails here.
+  describe.each([
+    ["a caller with no role", undefined],
+    ["a viewer", "viewer"],
+    ["a commenter", "commenter"],
+  ] as const)("%s", (_who, role) => {
+    beforeEach(async () => {
+      if (role !== undefined) await tasks.shareBoard(boardId, "carol", role, ALICE);
+    });
+
+    it.each([
+      ["closeTask", (t: Tasks) => t.closeTask(taskId, CAROL)],
+      ["moveTask", (t: Tasks) => t.moveTask(taskId, { columnId: "x" }, CAROL)],
+      ["addColumn", (t: Tasks) => t.addColumn(boardId, "Done", CAROL)],
+      ["createTask", (t: Tasks) => t.createTask({ boardId, title: "T" }, CAROL)],
+      ["release", (t: Tasks) => t.release(taskId, CAROL)],
+      ["updateTask", (t: Tasks) => t.updateTask(taskId, { title: "x" }, CAROL)],
+      ["claim", (t: Tasks) => t.claim(taskId, CAROL)],
+    ])("is refused on %s", async (_name, call) => {
+      await expect(code(call(tasks))).resolves.toBe("FORBIDDEN");
+    });
+  });
+
+  it("refuses a caller with no role the progress list", async () => {
+    await expect(code(tasks.listProgress(taskId, CAROL))).resolves.toBe("FORBIDDEN");
+  });
+
+  it("refuses a claim with a time to live over one day", async () => {
+    await expect(code(tasks.claim(taskId, ALICE, { ttlMs: 86_400_001 }))).resolves.toBe("INVALID_INPUT");
+    await expect(code(tasks.claim(taskId, ALICE, { ttlMs: 86_400_000 }))).resolves.toBe("NO_ERROR");
+  });
+
+  it("lets an owner release and close over a claim that an editor holds", async () => {
+    await tasks.shareBoard(boardId, "carol", "editor", ALICE);
+    await tasks.claim(taskId, CAROL);
+    await tasks.unshareBoard(boardId, "carol", ALICE);
+    // carol has no role now, so she cannot release. The owner can.
+    await expect(code(tasks.release(taskId, CAROL))).resolves.toBe("FORBIDDEN");
+    await expect(code(tasks.release(taskId, ALICE))).resolves.toBe("NO_ERROR");
+    await tasks.shareBoard(boardId, "dave", "editor", ALICE);
+    const DAVE = trustedContext("dave", "human");
+    await tasks.claim(taskId, DAVE);
+    await expect(code(tasks.closeTask(taskId, ALICE))).resolves.toBe("NO_ERROR");
+  });
+
+  it("does not let an editor release or close over another principal's claim", async () => {
+    await tasks.shareBoard(boardId, "carol", "editor", ALICE);
+    await tasks.shareBoard(boardId, "dave", "editor", ALICE);
+    await tasks.claim(taskId, CAROL);
+    const DAVE = trustedContext("dave", "human");
+    await expect(code(tasks.release(taskId, DAVE))).resolves.toBe("NOT_HOLDER");
+    await expect(code(tasks.closeTask(taskId, DAVE))).resolves.toBe("CLAIM_HELD");
+  });
+
+  it("refuses an owner who lowers their own role, so a board keeps an owner", async () => {
+    await expect(code(tasks.shareBoard(boardId, ALICE.principalId, "viewer", ALICE))).resolves.toBe("INVALID_INPUT");
+    await expect(code(tasks.shareBoard(boardId, ALICE.principalId, "owner", ALICE))).resolves.toBe("NO_ERROR");
+  });
+
+  it("writes an audit entry when an agent makes a board", async () => {
+    const agent: PrincipalContext = {
+      principalId: "bot-9",
+      kind: "agent_of_human",
+      chain: [
+        { id: "alice", kind: "human" },
+        { id: "bot-9", kind: "agent_of_human" },
+      ],
+      scopes: ["board:write"],
+    };
+    const made = await tasks.createBoard({ title: "By agent" }, agent);
+    const audit = await createSharing(store).listAudit(ALICE, made.id);
+    expect(audit.find((e) => e.principalId === "bot-9")).toMatchObject({ machineMade: true, outcome: "allowed" });
+  });
 });

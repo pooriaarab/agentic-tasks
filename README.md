@@ -103,7 +103,7 @@ is refused in all of them.
 - Tasks use any `Store` that passes the `agentic-identity` contract suite. Pass a
   `Store` to `createTasks`. `createFileStore` is the file adapter. Use
   `createMemoryStore` from `agentic-identity` in tests.
-- A live claim blocks other claims and closes. Moves, edits, and progress notes
+- A live claim blocks other claims and closes, except from a board owner. A claim lasts at most one day. Moves, edits, and progress notes
   do not check the claim.
 
 ## License
