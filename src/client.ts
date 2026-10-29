@@ -22,6 +22,22 @@ export type ApiErrorCode =
   // The reply was not an API error body, for example from a proxy.
   | "UNKNOWN";
 
+const KNOWN_CODES: ReadonlySet<string> = new Set<ApiErrorCode>([
+  "NOT_FOUND",
+  "FORBIDDEN",
+  "INVALID_INPUT",
+  "CLAIM_HELD",
+  "NOT_HOLDER",
+  "TASK_CLOSED",
+  "UNAUTHENTICATED",
+  "STORE_BUSY",
+  "STORE_NOT_CONFIGURED",
+  "REGION_NOT_CONFIGURED",
+  "LOCAL_TEST_AUTH_NOT_LOOPBACK",
+  "INTERNAL",
+  "UNKNOWN",
+]);
+
 // Thrown for every reply that is not a success. `code` is the API error code and
 // `status` is the HTTP status.
 export class TasksApiError extends Error {
@@ -75,6 +91,24 @@ export interface TasksClient {
   listProgress(taskId: string, options?: CallOptions): Promise<ProgressEntry[]>;
 }
 
+// A success reply must have the expected shape, or the call fails. A proxy or a
+// wrong baseUrl can answer 200 with any body.
+type Shape = "board" | "task" | "tasks" | "note" | "notes" | "shared" | "unshared" | "erased";
+
+const isObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+const hasId = (v: unknown) => isObject(v) && typeof v.id === "string";
+const SHAPES: Record<Shape, (v: unknown) => boolean> = {
+  board: (v) => hasId(v) && Array.isArray((v as Board).columns),
+  task: (v) => hasId(v) && typeof (v as Task).boardId === "string" && typeof (v as Task).status === "string",
+  tasks: (v) => Array.isArray(v) && v.every(SHAPES.task),
+  note: (v) => hasId(v) && typeof (v as ProgressEntry).note === "string",
+  notes: (v) => Array.isArray(v) && v.every(SHAPES.note),
+  shared: (v) => isObject(v) && v.shared === true,
+  unshared: (v) => isObject(v) && v.unshared === true,
+  erased: (v) => isObject(v) && v.erased === true,
+};
+
 export function createClient(options: ClientOptions): TasksClient {
   if (typeof options.baseUrl !== "string" || options.baseUrl === "") {
     throw new TypeError("createClient needs a baseUrl");
@@ -82,10 +116,21 @@ export function createClient(options: ClientOptions): TasksClient {
   if (typeof options.token !== "string" || options.token === "") {
     throw new TypeError("createClient needs a token");
   }
-  const root = `${options.baseUrl.replace(/\/+$/, "")}/api/v1/tasks`;
+  let origin: URL;
+  try {
+    origin = new URL(options.baseUrl);
+  } catch {
+    throw new TypeError("baseUrl must be an absolute URL");
+  }
+  if (origin.search !== "" || origin.hash !== "") {
+    throw new TypeError("baseUrl must have no query or hash");
+  }
+  const root = `${origin.origin}${origin.pathname.replace(/\/+$/, "")}/api/v1/tasks`;
   const token = options.token;
   // Read at call time so a test can swap the global.
-  const send = (input: string, init: RequestInit) => (options.fetch ?? globalThis.fetch)(input, init);
+  // A custom fetch is called as a plain function, so a bound method works too.
+  const send = (input: string, init: RequestInit) =>
+    options.fetch === undefined ? globalThis.fetch(input, init) : options.fetch(input, init);
   const seg = encodeURIComponent;
 
   async function call<T>(
@@ -93,6 +138,7 @@ export function createClient(options: ClientOptions): TasksClient {
     path: string,
     body: unknown,
     call: CallOptions | undefined,
+    shape: Shape,
   ): Promise<T> {
     const headers: Record<string, string> = { authorization: `Bearer ${token}` };
     if (body !== undefined) headers["content-type"] = "application/json";
@@ -111,12 +157,12 @@ export function createClient(options: ClientOptions): TasksClient {
     }
     if (!response.ok) {
       const error = (parsed as { error?: { code?: unknown; message?: unknown } } | undefined)?.error;
-      const code = typeof error?.code === "string" ? (error.code as ApiErrorCode) : "UNKNOWN";
+      const code = KNOWN_CODES.has(error?.code as string) ? (error?.code as ApiErrorCode) : "UNKNOWN";
       const message = typeof error?.message === "string" ? error.message : `HTTP ${response.status}`;
       throw new TasksApiError(code, response.status, message);
     }
-    if (parsed === undefined) {
-      throw new TasksApiError("UNKNOWN", response.status, "the reply was not JSON");
+    if (!SHAPES[shape](parsed)) {
+      throw new TasksApiError("UNKNOWN", response.status, `the reply is not a ${shape}`);
     }
     return parsed as T;
   }
@@ -125,32 +171,32 @@ export function createClient(options: ClientOptions): TasksClient {
     `/boards/${seg(boardId)}/members/${seg(subject.kind)}/${seg(subject.id)}`;
 
   return {
-    createBoard: (input, o) => call("POST", "/boards", input, o),
-    getBoard: (id, o) => call("GET", `/boards/${seg(id)}`, undefined, o),
-    addColumn: (id, name, o) => call("POST", `/boards/${seg(id)}/columns`, { name }, o),
+    createBoard: (input, o) => call("POST", "/boards", input, o, "board"),
+    getBoard: (id, o) => call("GET", `/boards/${seg(id)}`, undefined, o, "board"),
+    addColumn: (id, name, o) => call("POST", `/boards/${seg(id)}/columns`, { name }, o, "board"),
     shareBoard: async (id, subject, role, o) => {
-      await call("PUT", member(id, subject), { role }, o);
+      await call("PUT", member(id, subject), { role }, o, "shared");
     },
     unshareBoard: async (id, subject, o) => {
-      await call("DELETE", member(id, subject), undefined, o);
+      await call("DELETE", member(id, subject), undefined, o, "unshared");
     },
     eraseBoard: async (id, o) => {
-      await call("DELETE", `/boards/${seg(id)}`, undefined, o);
+      await call("DELETE", `/boards/${seg(id)}`, undefined, o, "erased");
     },
-    createTask: (input, o) => call("POST", "/tasks", input, o),
+    createTask: (input, o) => call("POST", "/tasks", input, o, "task"),
     listTasks: (filter, o) => {
       const query = new URLSearchParams({ boardId: filter.boardId });
       if (filter.columnId !== undefined) query.set("columnId", filter.columnId);
       if (filter.status !== undefined) query.set("status", filter.status);
-      return call("GET", `/tasks?${query}`, undefined, o);
+      return call("GET", `/tasks?${query}`, undefined, o, "tasks");
     },
-    getTask: (id, o) => call("GET", `/tasks/${seg(id)}`, undefined, o),
-    updateTask: (id, patch, o) => call("PATCH", `/tasks/${seg(id)}`, patch, o),
-    moveTask: (id, target, o) => call("POST", `/tasks/${seg(id)}/move`, target, o),
-    claim: (id, claim, o) => call("POST", `/tasks/${seg(id)}/claim`, claim ?? {}, o),
-    release: (id, o) => call("POST", `/tasks/${seg(id)}/release`, undefined, o),
-    closeTask: (id, o) => call("POST", `/tasks/${seg(id)}/close`, undefined, o),
-    progress: (id, note, o) => call("POST", `/tasks/${seg(id)}/progress`, { note }, o),
-    listProgress: (id, o) => call("GET", `/tasks/${seg(id)}/progress`, undefined, o),
+    getTask: (id, o) => call("GET", `/tasks/${seg(id)}`, undefined, o, "task"),
+    updateTask: (id, patch, o) => call("PATCH", `/tasks/${seg(id)}`, patch, o, "task"),
+    moveTask: (id, target, o) => call("POST", `/tasks/${seg(id)}/move`, target, o, "task"),
+    claim: (id, claim, o) => call("POST", `/tasks/${seg(id)}/claim`, claim ?? {}, o, "task"),
+    release: (id, o) => call("POST", `/tasks/${seg(id)}/release`, undefined, o, "task"),
+    closeTask: (id, o) => call("POST", `/tasks/${seg(id)}/close`, undefined, o, "task"),
+    progress: (id, note, o) => call("POST", `/tasks/${seg(id)}/progress`, { note }, o, "note"),
+    listProgress: (id, o) => call("GET", `/tasks/${seg(id)}/progress`, undefined, o, "notes"),
   };
 }

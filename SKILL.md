@@ -25,7 +25,12 @@ await tasks.shareBoard(board.id, { kind: "agent", id: "agent-1" }, "editor", me)
 import { createClient } from "agentic-tasks/client";
 
 const tasks = createClient({ baseUrl: "https://tasks.example.com", token });
-await tasks.claim(taskId); // a refusal throws TasksApiError with code and status
+await tasks.getTask(taskId); // read a task before you claim it
+try {
+  await tasks.claim(taskId);
+} catch (error) {
+  // CLAIM_HELD: wait for the holder or the expiry. Do not retry in a loop.
+}
 ```
 
 ## Use the CLI

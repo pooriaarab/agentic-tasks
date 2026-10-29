@@ -56,6 +56,7 @@ import { createClient, TasksApiError } from "agentic-tasks/client";
 const tasks = createClient({ baseUrl: "https://tasks.example.com", token });
 const board = await tasks.createBoard({ title: "Sprint" });
 try {
+  await tasks.getTask(taskId); // read a task before you claim it
   await tasks.claim(taskId, { ttlMs: 600_000 }, { signal: AbortSignal.timeout(5000) });
 } catch (error) {
   if (error instanceof TasksApiError) console.error(error.code, error.status);
@@ -63,13 +64,13 @@ try {
 }
 ```
 
-- `baseUrl` is the Worker origin. The client adds `/api/v1/tasks`.
+- `baseUrl` is the Worker origin, with no query or hash. The client adds `/api/v1/tasks`.
 - `token` is a bearer credential that the Worker accepts. `fetch` is optional.
 - One method for each route: `createBoard`, `getBoard`, `addColumn`, `shareBoard`,
   `unshareBoard`, `eraseBoard`, `createTask`, `listTasks`, `getTask`, `updateTask`,
   `moveTask`, `claim`, `release`, `closeTask`, `progress`, and `listProgress`.
 - A refused call throws `TasksApiError` with the API error `code` and the HTTP `status`.
-  A reply that is not an API error has the code `UNKNOWN`.
+  A reply that is not an API error, or a success reply with the wrong shape, has the code `UNKNOWN`.
 - Each method takes `{ signal }` last. An aborted call rejects with the fetch abort error.
 - The client never retries. A refused claim stays refused: wait for the holder or the expiry.
 

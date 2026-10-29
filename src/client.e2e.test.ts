@@ -1,5 +1,5 @@
 import type { ChildProcess } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -132,6 +132,49 @@ describe("createClient requests", () => {
     const error = await client.getTask("t1").then(() => undefined, (e: unknown) => e as TasksApiError);
     expect(error?.code).toBe("UNKNOWN");
     expect(error?.status).toBe(502);
+  });
+
+  const reply = (status: number, body: string) => async () => new Response(body, { status });
+  const fake = (f: typeof fetch) => createClient({ baseUrl: "https://tasks.example.com", token: "t", fetch: f });
+
+  it("fails a 200 reply that has the wrong shape, so a claim is never assumed", async () => {
+    for (const body of ["null", '{"ok":true}', "[]", '{"error":{"code":"NOT_FOUND"}}', "not json", ""]) {
+      const error = await fake(reply(200, body)).claim("t1").then(() => undefined, (e: unknown) => e as TasksApiError);
+      expect(error).toBeInstanceOf(TasksApiError);
+      expect(error?.code).toBe("UNKNOWN");
+    }
+    const unshared = await fake(reply(200, "{}")).unshareBoard("b", { kind: "human", id: "x" }).then(() => undefined, (e: unknown) => e);
+    expect(unshared).toBeInstanceOf(TasksApiError);
+    await expect(fake(reply(200, '{"unshared":true}')).unshareBoard("b", { kind: "human", id: "x" })).resolves.toBeUndefined();
+  });
+
+  it("maps an error code that it does not know to UNKNOWN", async () => {
+    const body = JSON.stringify({ error: { code: "RATE_LIMITED", message: "slow down" } });
+    const error = await fake(reply(429, body)).getTask("t1").then(() => undefined, (e: unknown) => e as TasksApiError);
+    expect(error?.code).toBe("UNKNOWN");
+    expect(error?.status).toBe(429);
+  });
+
+  it("calls a custom fetch as a plain function", async () => {
+    const holder = {
+      marker: 1,
+      fetch(this: unknown) {
+        return Promise.resolve(new Response('{"unshared":true}'));
+      },
+    };
+    await expect(fake(holder.fetch).unshareBoard("b", { kind: "human", id: "x" })).resolves.toBeUndefined();
+  });
+
+  it("refuses a baseUrl that is not absolute or has a query or hash", () => {
+    for (const baseUrl of ["tasks.example.com", "https://h/?x=1", "https://h/#a"]) {
+      expect(() => createClient({ baseUrl, token: "t" })).toThrow(TypeError);
+    }
+  });
+
+  it("keeps Node and runtime imports out of the built client", () => {
+    const built = readFileSync(new URL("../dist/client.js", import.meta.url), "utf8");
+    expect(built).not.toMatch(/^\s*import\s/m);
+    expect(built).not.toContain("node:");
   });
 
   it("refuses to build without a token", () => {
