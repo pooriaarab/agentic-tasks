@@ -13,8 +13,10 @@ import { createTasks, type Tasks } from "./tasks.js";
 //  3. A TaskError keeps its own status, and an unknown error stays 500.
 //  4. With an Auth port, a request needs a credential that it resolves. The header
 //     trust flag plays no part, and the headers are ignored.
+//  4b. Local test auth serves a loopback request only. A real host, or a request
+//      that carries cf-connecting-ip, gets 403 and never reaches the task code.
 //  5. The migration holds the adapter schema, so the two cannot drift apart.
-const ENV = { TASKS_UNSAFE_TRUST_HEADERS: "1", DB: {}, TASKS_REGION: "eu" };
+const ENV = { TASKS_UNSAFE_LOCAL_TEST_AUTH: "1", DB: {}, TASKS_REGION: "eu" };
 
 function failingWith(error: Error) {
   const app = createApp(() => ({ getBoard: async () => Promise.reject(error) }) as unknown as Tasks);
@@ -50,6 +52,37 @@ describe("store errors", () => {
 
   it("keeps the status of a task error", async () => {
     expect((await failingWith(new TaskError("NOT_FOUND", "x"))).status).toBe(404);
+  });
+});
+
+describe("local test auth", () => {
+  const WHO = { "x-principal-id": "alice", "x-principal-kind": "human" };
+  const app = createApp(() => ({ getBoard: async () => ({ id: "b" }) }) as unknown as Tasks);
+  const get = async (url: string, headers: Record<string, string> = WHO) =>
+    (await app.request(url, { headers }, ENV)).status;
+
+  it.each(["http://localhost/", "http://127.0.0.1:8787/", "http://[::1]:8787/"])("serves %s", async (origin) => {
+    expect(await get(`${origin}api/v1/tasks/boards/b`)).toBe(200);
+  });
+
+  it.each(["https://tasks.example.com/", "http://10.0.0.5/", "http://localhost.example.com/"])(
+    "refuses %s with 403",
+    async (origin) => {
+      expect(await get(`${origin}api/v1/tasks/boards/b`)).toBe(403);
+    },
+  );
+
+  it("refuses a request that came through the edge, even on a loopback host", async () => {
+    expect(await get("http://localhost/api/v1/tasks/boards/b", { ...WHO, "cf-connecting-ip": "203.0.113.9" })).toBe(403);
+  });
+
+  it("serves wrangler dev, which names a loopback client", async () => {
+    expect(await get("http://localhost/api/v1/tasks/boards/b", { ...WHO, "cf-connecting-ip": "127.0.0.1" })).toBe(200);
+  });
+
+  it("is off unless the flag is exactly 1", async () => {
+    const off = await app.request("/api/v1/tasks/boards/b", { headers: WHO }, { ...ENV, TASKS_UNSAFE_LOCAL_TEST_AUTH: "true" });
+    expect(off.status).not.toBe(200);
   });
 });
 

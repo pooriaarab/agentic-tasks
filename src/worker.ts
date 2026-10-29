@@ -1,6 +1,14 @@
 import { Hono, type Context } from "hono";
 import { TaskError, type TaskErrorCode, type TaskStatus } from "./model.js";
-import { parseRegion, type Auth, type PrincipalContext, type Region, type Role } from "agentic-identity";
+import {
+  createStoreAuth,
+  parseRegion,
+  type Auth,
+  type PrincipalContext,
+  type Region,
+  type Role,
+  type Store,
+} from "agentic-identity";
 import { trustedContext } from "./principal.js";
 import { createD1Store, type D1Like } from "agentic-identity/cloudflare";
 import { createTasks, type Tasks } from "./tasks.js";
@@ -14,17 +22,33 @@ const STATUS_BY_CODE: Record<TaskErrorCode, 400 | 403 | 404 | 409> = {
   TASK_CLOSED: 409,
 };
 
-// The stopgap `Auth`. It reads the principal from headers, and nothing checks them.
-// Any caller can name any principal, so the Worker serves nothing until the
-// operator sets TASKS_UNSAFE_TRUST_HEADERS=1. It goes away when the identity
-// Worker API (agentic-identity 0.2.0) can resolve a credential: pass that `Auth` to createApp.
-const headerAuth: Auth = {
+const LOOPBACK_CLIENTS = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+// The local-only test `Auth`. It reads the principal from headers, and nothing
+// checks them, so it serves only a request that reached the Worker on a loopback
+// host and did not come through the Cloudflare edge. The edge always sets
+// cf-connecting-ip to the client address, and wrangler dev sets it to loopback,
+// so a loopback host with any other client address is refused. Any other request
+// gets no principal.
+export const localTestAuth: Auth = {
   async authenticate(request) {
+    if (!isLoopbackRequest(request)) return null;
     const id = request.headers.get("x-principal-id");
     const kind = request.headers.get("x-principal-kind");
     return id && kind ? trustedContext(id, kind) : null;
   },
 };
+
+export function isLoopbackRequest(request: Request): boolean {
+  const client = request.headers.get("cf-connecting-ip");
+  if (client !== null && !LOOPBACK_CLIENTS.has(client)) return false;
+  try {
+    return LOOPBACK_HOSTS.has(new URL(request.url).hostname);
+  } catch {
+    return false;
+  }
+}
 
 // An empty body counts as {} so actions like claim need no body.
 async function jsonBody<T>(c: Context): Promise<T> {
@@ -38,7 +62,9 @@ async function jsonBody<T>(c: Context): Promise<T> {
 }
 
 interface Bindings {
-  TASKS_UNSAFE_TRUST_HEADERS?: string;
+  // Local dev and tests only. Swaps the stored credentials for principal headers,
+  // and only for requests on a loopback host. Never set it in production.
+  TASKS_UNSAFE_LOCAL_TEST_AUTH?: string;
   // The D1 database. Create it in the EU: wrangler d1 create <name> --location weur
   DB?: D1Like;
   // Where the database lives. It is a claim that the operator makes: "eu" or "us".
@@ -77,42 +103,33 @@ type Resolve = (env: Bindings) => Tasks;
 // instances cannot both take it.
 // The store keeps a queue that runs one transaction at a time in this isolate, so
 // one store serves every request on a binding.
-const cache = new WeakMap<D1Like, { region: Region; tasks: Tasks }>();
+const cache = new WeakMap<D1Like, { region: Region; store: Store; tasks: Tasks }>();
 
-export const tasksOnD1: Resolve = (env) => {
+function onD1(env: Bindings) {
   const db = env.DB as D1Like;
   const region = regionOf(env) as Region;
   const cached = cache.get(db);
-  if (cached?.region === region) return cached.tasks;
-  const tasks = createTasks({ store: createD1Store(db, { region }) });
-  cache.set(db, { region, tasks });
-  return tasks;
-};
+  if (cached?.region === region) return cached;
+  const store = createD1Store(db, { region });
+  const entry = { region, store, tasks: createTasks({ store }) };
+  cache.set(db, entry);
+  return entry;
+}
 
-// With no `auth`, the Worker runs on header trust, for local dev only. With an
-// `auth`, every request needs a credential that it resolves, and the trust flag
-// plays no part.
-export function createApp(resolve: Resolve, auth?: Auth) {
+export const tasksOnD1: Resolve = (env) => onD1(env).tasks;
+
+// Credentials live in the same D1 store as the tasks, so they last across
+// restarts and every instance sees a revoke. The identity Worker issues them.
+export const authOnD1 = (env: Bindings): Auth => createStoreAuth(onD1(env).store);
+
+// With no `auth`, the Worker reads the credential from the D1 store. With an
+// `auth`, that one decides instead. TASKS_UNSAFE_LOCAL_TEST_AUTH=1 swaps in
+// `localTestAuth`, which refuses any request that is not on loopback.
+export function createApp(resolve: Resolve, auth?: Auth | ((env: Bindings) => Auth)) {
   const api = new Hono<{ Bindings: Bindings; Variables: { ctx: PrincipalContext } }>().basePath(
     "/api/v1/tasks",
   );
-  const trustHeaders = auth === undefined;
-
-  // A Worker reads its env per request, not at import time, so the gate runs
-  // on every request. Set TASKS_UNSAFE_TRUST_HEADERS=1 only behind a gateway.
   api.use("*", async (c, next) => {
-    if (trustHeaders && c.env?.TASKS_UNSAFE_TRUST_HEADERS !== "1") {
-      return c.json(
-        {
-          error: {
-            code: "HEADER_TRUST_NOT_ENABLED",
-            message:
-              "Set TASKS_UNSAFE_TRUST_HEADERS=1 to serve. Trust only holds behind a gateway that checks identity.",
-          },
-        },
-        503,
-      );
-    }
     if (c.env.DB === undefined) {
       return c.json(notConfigured("STORE_NOT_CONFIGURED", "Bind a D1 database as DB."), 503);
     }
@@ -122,7 +139,16 @@ export function createApp(resolve: Resolve, auth?: Auth) {
         503,
       );
     }
-    const ctx = await (auth ?? headerAuth).authenticate(c.req.raw);
+    // A Worker reads its env per request, not at import time.
+    const local = auth === undefined && c.env.TASKS_UNSAFE_LOCAL_TEST_AUTH === "1";
+    if (local && !isLoopbackRequest(c.req.raw)) {
+      return c.json(
+        { error: { code: "LOCAL_TEST_AUTH_NOT_LOOPBACK", message: "Test auth serves only loopback requests." } },
+        403,
+      );
+    }
+    const chosen = local ? localTestAuth : typeof auth === "function" ? auth(c.env) : (auth ?? authOnD1(c.env));
+    const ctx = await chosen.authenticate(c.req.raw);
     if (ctx === null) {
       return c.json(
         { error: { code: "UNAUTHENTICATED", message: "Send a valid credential." } },

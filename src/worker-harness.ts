@@ -2,7 +2,11 @@
 // ci:local installs wrangler first. Instances that share a persist directory
 // share one local D1 database.
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { issueCredential } from "agentic-identity";
+import { createD1Store, type D1Like } from "agentic-identity/cloudflare";
+import { getPlatformProxy } from "wrangler";
 
 const WRANGLER = fileURLToPath(new URL("../node_modules/wrangler/bin/wrangler.js", import.meta.url));
 // The last text a Worker process wrote to stderr, for the error when it dies.
@@ -68,4 +72,17 @@ export async function stopWorker(server: ChildProcess | undefined): Promise<void
   const exited = new Promise<void>((resolve) => server.once("exit", () => resolve()));
   server.kill("SIGTERM");
   await exited;
+}
+
+// Writes a root person and a credential for it into the local D1 database in a
+// persist directory, as the identity Worker does at sign-in. Returns the token.
+export async function seedCredential(persistDir: string, personId: string): Promise<string> {
+  const proxy = await getPlatformProxy<{ DB: D1Like }>({ persist: { path: join(persistDir, "v3") } });
+  try {
+    const store = createD1Store(proxy.env.DB, { region: "unknown" });
+    await store.put("principals", personId, { id: personId, kind: "human", scopes: ["board:admin"] });
+    return await issueCredential(store, { principalId: personId, kind: "api_key" });
+  } finally {
+    await proxy.dispose();
+  }
 }

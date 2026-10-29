@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { LOCAL_REGION, migrate, startWorker, stopWorker, waitForWorker } from "./worker-harness.js";
+import { LOCAL_REGION, migrate, seedCredential, startWorker, stopWorker, waitForWorker } from "./worker-harness.js";
 
 // The real Worker under `wrangler dev`, on a local D1 database.
 const PERSIST = mkdtempSync(join(tmpdir(), "agentic-tasks-e2e-"));
@@ -13,7 +13,7 @@ const PORT = 18787;
 const PORT_WITHOUT_FLAG = 18788;
 const BASE = `http://127.0.0.1:${PORT}/api/v1/tasks`;
 const BASE_WITHOUT_FLAG = `http://127.0.0.1:${PORT_WITHOUT_FLAG}/api/v1/tasks`;
-const TRUST_FLAG = ["TASKS_UNSAFE_TRUST_HEADERS:1"];
+const TRUST_FLAG = ["TASKS_UNSAFE_LOCAL_TEST_AUTH:1"];
 const ALICE = { "x-principal-id": "alice", "x-principal-kind": "human" };
 const BOT = { "x-principal-id": "bot-1", "x-principal-kind": "agent_of_human" };
 
@@ -65,31 +65,42 @@ async function openTask(): Promise<{ boardId: string; columnId: string; taskId: 
   return { boardId: board.id, columnId, taskId: task.id };
 }
 
-describe("agentic-tasks Worker without the trust flag", () => {
+describe("agentic-tasks Worker with stored credentials", () => {
   let server: ChildProcess;
+  let token: string;
 
   beforeAll(async () => {
-    server = startWorker(PORT_WITHOUT_FLAG, PERSIST, []);
+    token = await seedCredential(PERSIST, "alice");
+    server = startWorker(PORT_WITHOUT_FLAG, PERSIST, [...LOCAL_REGION]);
     await waitForWorker(BASE_WITHOUT_FLAG, server);
   }, 120_000);
 
   afterAll(() => stopWorker(server));
 
-  it("answers 503 to a write even when it carries principal headers", async () => {
+  it("answers 401 to a request with principal headers and no credential", async () => {
     const response = await fetch(`${BASE_WITHOUT_FLAG}/boards`, {
       method: "POST",
       headers: { ...ALICE, "content-type": "application/json" },
       body: JSON.stringify({ title: "Sprint" }),
     });
-    expect(response.status).toBe(503);
-    expect(((await response.json()) as { error: { code: string } }).error.code).toBe(
-      "HEADER_TRUST_NOT_ENABLED",
-    );
+    expect(response.status).toBe(401);
   });
 
-  it("answers 503 to a read, so no route is open", async () => {
-    const response = await fetch(`${BASE_WITHOUT_FLAG}/boards/not-there`);
-    expect(response.status).toBe(503);
+  it("answers 401 to a credential that is not stored", async () => {
+    const response = await fetch(`${BASE_WITHOUT_FLAG}/boards/x`, {
+      headers: { authorization: "Bearer aid_not-stored" },
+    });
+    expect(response.status).toBe(401);
+  });
+
+  it("serves a stored credential, and takes the principal from the store, not the headers", async () => {
+    const response = await fetch(`${BASE_WITHOUT_FLAG}/boards`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "x-principal-id": "mallory", "x-principal-kind": "human" },
+      body: JSON.stringify({ title: "Sprint" }),
+    });
+    expect(response.status).toBe(201);
+    expect(((await response.json()) as { createdBy: unknown }).createdBy).toEqual({ id: "alice", kind: "human" });
   });
 });
 
