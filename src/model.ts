@@ -1,15 +1,9 @@
 // Domain types. Every write records the acting principal and its kind,
 // so a reader can tell a person's edit from an agent's edit.
 
-export const PRINCIPAL_KINDS = [
-  "human",
-  "agent_of_human",
-  "agent_of_agent",
-  "agent",
-  "user_token",
-] as const;
+import { PRINCIPAL_KINDS, type PrincipalKind } from "agentic-identity";
 
-export type PrincipalKind = (typeof PRINCIPAL_KINDS)[number];
+export { PRINCIPAL_KINDS, type PrincipalKind };
 
 export interface Principal {
   id: string;
