@@ -220,7 +220,8 @@ The UI limits:
 
 ### Mount the UI in your app
 
-`agentic-tasks/ui` renders the task UI inside your own page. It needs no framework in your app. You give it
+`agentic-tasks/ui` renders the task UI inside your own page. Your app does not need React code. It must
+install `react` and `react-dom` (version 19), because `agentic-tasks/ui` imports them. You give it
 an element, the Worker origin, a function that returns the bearer token, and the principal who uses the UI.
 `mount` returns a handle.
 
@@ -245,8 +246,12 @@ change the theme of the page: set `data-theme` on `<html>` yourself. The UI show
 
 The principal needs an `id` and a `kind`. A missing or unknown `kind` throws a `TypeError`. An empty token
 fails the call, and the UI shows the error. The server still checks every write against the token. The UI
-remembers the lists it opened in `localStorage`, under one key for the page origin. It does not separate Workers or principals. `react` and `react-dom` (version 19) are optional peer
-dependencies. The web UI that the Worker serves uses the same components.
+remembers the lists it opened in `localStorage`, under one key for the page origin. It does not separate
+Workers or principals.
+
+`react` and `react-dom` (version 19) are optional peer dependencies. Install them to use `agentic-tasks/ui`.
+The CLI, the MCP server, and `agentic-tasks/client` do not need them. The web UI that the Worker serves
+uses the same components.
 
 ## Develop
 
