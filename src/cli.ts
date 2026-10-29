@@ -129,7 +129,7 @@ function checkArgs(args: ParsedArgs, spec: CommandSpec): void {
   for (const name of args.flags.keys()) {
     if (!known.has(name)) throw new UsageError(`unknown flag --${name}`);
   }
-  const slots = spec.args.split(" ").filter(Boolean).length;
+  const slots = spec.args.match(/[<[][^>\]]*[>\]]/g)?.length ?? 0;
   if (args.positionals.length > slots) {
     throw new UsageError(`unexpected argument ${args.positionals[slots]}`);
   }
@@ -311,8 +311,18 @@ async function runCommand(
   }
 }
 
-function wantsHelp(argv: string[]): boolean {
-  return argv.some((token) => token === "--help" || token === "-h");
+// Finds the command and a help request. A value that follows a flag is not read
+// as either, so a note that is exactly "-h" stays a note.
+function scanForHelp(argv: string[]): { help: boolean; words: string[] } {
+  const words: string[] = [];
+  let help = false;
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index] as string;
+    if (token === "--help" || token === "-h") help = true;
+    else if (token.startsWith("--")) index += 1;
+    else words.push(token);
+  }
+  return { help, words };
 }
 
 async function main(argv: string[]): Promise<number> {
@@ -322,8 +332,9 @@ async function main(argv: string[]): Promise<number> {
       return 0;
     }
     // Help comes before every other check, so it works with no --as and no store.
-    if (argv[0] === "help" || wantsHelp(argv)) {
-      const named = argv.find((token) => !token.startsWith("-") && token !== "help");
+    const { help, words } = scanForHelp(argv);
+    if (help || words[0] === "help") {
+      const named = words[0] === "help" ? words[1] : words[0];
       if (named === undefined) {
         process.stdout.write(`${USAGE}\n`);
         return 0;

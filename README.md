@@ -35,24 +35,24 @@ Make a board, add a task, claim it, and finish it. The data goes to `./agentic-t
 Every command needs `--as` and `--kind`. The kind is never defaulted.
 
 ```sh
-alias at="npx agentic-tasks"
-at board "Sprint" --columns "Todo,Doing,Done" --as ana --kind human
+tasks() { npx agentic-tasks "$@"; }
+tasks board "Sprint" --columns "Todo,Doing,Done" --as ana --kind human
 ```
 
 The output is the board as JSON. Copy its `id` and the `id` of the first column:
 
 ```sh
-at new <board id> "Write the spec" --column <column id> --as ana --kind human
-at claim <task id> --ttl-ms 600000 --as ana --kind human
-at progress <task id> "Draft is done" --as ana --kind human
-at close <task id> --as ana --kind human
-at boards --as ana --kind human
-at export --as ana --kind human
+tasks new <board id> "Write the spec" --column <column id> --as ana --kind human
+tasks claim <task id> --ttl-ms 600000 --as ana --kind human
+tasks progress <task id> "Draft is done" --as ana --kind human
+tasks close <task id> --as ana --kind human
+tasks boards --as ana --kind human
+tasks export --as ana --kind human
 ```
 
 `board` also takes the title as `--title Sprint`. A flag or argument that a command does
-not know fails with exit code 2. `at --help` lists the commands, `at <command> --help`
-shows one command, and `at --version` prints the version. Use `--file <path>` or
+not know fails with exit code 2. `tasks --help` lists the commands, `tasks <command> --help`
+shows one command, and `tasks --version` prints the version. Use `--file <path>` or
 `AGENTIC_TASKS_FILE` to pick another store file.
 
 ## Access

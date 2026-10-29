@@ -235,6 +235,16 @@ describe("agentic-tasks CLI (built binary)", () => {
     }
     const bad = spawnSync(process.execPath, [CLI, "nope", "--help"], { encoding: "utf8" });
     expect(bad.status).toBe(2);
+  }, 120_000);
+
+  it("finds the command for help when flags come first, and keeps -h as a flag value", () => {
+    const flagsFirst = spawnSync(process.execPath, [CLI, "--file", file, "--as", "ana", "board", "--help"], { encoding: "utf8" });
+    expect([flagsFirst.status, flagsFirst.stdout]).toEqual([0, expect.stringContaining("usage: agentic-tasks board")]);
+    const { boardId } = makeBoard();
+    const task = JSON.parse(run(["new", boardId, "Doc", ...ALICE]).stdout) as { id: string };
+    const edited = run(["update", task.id, "--description", "-h", ...ALICE]);
+    expect(edited.code).toBe(0);
+    expect((JSON.parse(edited.stdout) as { description: string }).description).toBe("-h");
   });
 
   it("takes the board title as an argument or as --title", () => {
@@ -251,6 +261,13 @@ describe("agentic-tasks CLI (built binary)", () => {
       ["board", "Sprint", "extra"],
       ["boards", "stray"],
       ["board"],
+      ["close", "t1", "t2"],
+      ["delete", "t1", "t2"],
+      ["get", "t1", "extra"],
+      ["new", "b1", "title", "extra"],
+      ["column", "b1", "Done", "extra"],
+      ["share", "b1", "s1", "viewer", "extra"],
+      ["progress", "t1", "note", "extra"],
     ]) {
       const result = run([...args, ...ALICE]);
       expect([args.join(" "), result.code]).toEqual([args.join(" "), 2]);
