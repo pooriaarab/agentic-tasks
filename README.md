@@ -261,13 +261,13 @@ cd agentic-tasks
 npm install && npm run dev
 ```
 
-`bun install && bun run dev` also works if npm is installed too. The scripts need macOS, Linux, or WSL. The `dev` script builds the package, then starts `wrangler dev` on <http://localhost:8791>. Wrangler keeps a local D1 database. The `dev` script turns off Wrangler telemetry. Set `WRANGLER_SEND_METRICS=false` when you run other wrangler commands.
+You can also use `bun install && bun run dev`. The `dev` script calls npm, so npm must be installed. The scripts need macOS, Linux, or WSL. The `dev` script builds the package, then starts `wrangler dev` on <http://localhost:8791>. Wrangler keeps a local D1 database. The `dev` script turns off Wrangler telemetry. Set `WRANGLER_SEND_METRICS=false` when you run other wrangler commands.
 
 ```sh
 curl -i http://localhost:8791/api/v1/tasks/health   # 200
 ```
 
-The API needs a credential. To call it with test auth, stop `npm run dev` and use the commands in "Develop". They start a second server on port 8787.
+The API needs a credential. To call it with test auth, stop `npm run dev` and use the commands in "Develop". They start the server with test auth on port 8787.
 
 `npm run dev:smoke` runs the same check by itself. It starts the dev server. It waits for `/api/v1/tasks/health` to answer 200. It stops the server. CI runs it as the "dev smoke" step. To use another port, change `8791` in the `dev` and `dev:smoke` scripts.
 
