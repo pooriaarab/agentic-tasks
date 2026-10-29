@@ -220,7 +220,7 @@ The UI limits:
 
 ### Mount the UI in your app
 
-`agentic-tasks/ui` renders the task UI inside your own page. Your app does not write React code. It must
+`agentic-tasks/ui` renders the task UI inside your own page. Your app does not need React code. It must
 install `react` and `react-dom` (version 19), because `agentic-tasks/ui` imports them. You give it
 an element, the Worker origin, a function that returns the bearer token, and the principal who uses the UI.
 `mount` returns a handle.
