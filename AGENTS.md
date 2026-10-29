@@ -7,12 +7,13 @@ Task boards where people and agents claim and finish work.
 - A board has ordered columns.
 - A task sits in one column. It has a title, description, labels, due date, and assignees.
 - Every write records the acting principal and its kind: `human`, `agent_of_human`, `agent_of_agent`, `agent`, or `user_token`.
+- Every call carries a principal context from `agentic-identity`. A board has roles: viewer reads, commenter adds notes, editor changes tasks, owner shares. A refused call has the code `FORBIDDEN`.
 - A claim holds a task for a set time. Only the holder can release it.
 
 ## Faces
 
 - SDK: `createTasks({ store })` from `agentic-tasks`.
-- CLI: `agentic-tasks <command> --as <id> --kind <kind> [--file <path>]`. A write needs `--as` and `--kind`; the kind is never defaulted. Output is JSON.
+- CLI: `agentic-tasks <command> --as <id> --kind <kind> [--file <path>]`. Every command needs `--as` and `--kind`; `share` and `unshare` give and take roles; the kind is never defaulted. Output is JSON.
 - MCP: `agentic-tasks mcp`. Each tool names its `principal`.
 - Store: tasks run on the `Store` port from `agentic-identity`. Tests use its memory adapter. The CLI uses `createFileStore`, which passes the `Store` contract suite.
 - The Worker keeps data in the D1 database bound as `DB`. `TASKS_REGION` (`eu` or `us`) is required. The schema is in `migrations/`.

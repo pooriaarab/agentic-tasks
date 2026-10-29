@@ -1,25 +1,30 @@
 import { Hono, type Context } from "hono";
-import { TaskError, type Principal, type PrincipalKind, type TaskErrorCode, type TaskStatus } from "./model.js";
-import { parseRegion, type Region } from "agentic-identity";
+import { TaskError, type TaskErrorCode, type TaskStatus } from "./model.js";
+import { parseRegion, type Auth, type PrincipalContext, type Region, type Role } from "agentic-identity";
+import { trustedContext } from "./principal.js";
 import { createD1Store, type D1Like } from "agentic-identity/cloudflare";
 import { createTasks, type Tasks } from "./tasks.js";
 
 const STATUS_BY_CODE: Record<TaskErrorCode, 400 | 403 | 404 | 409> = {
   NOT_FOUND: 404,
+  FORBIDDEN: 403,
   INVALID_INPUT: 400,
   CLAIM_HELD: 409,
   NOT_HOLDER: 403,
   TASK_CLOSED: 409,
 };
 
-// The actor comes from headers. Nothing checks these headers yet. Any caller
-// can name any principal, so the Worker serves nothing until the operator opts in.
-function actorOf(c: Context): Principal {
-  return {
-    id: c.req.header("x-principal-id") ?? "",
-    kind: (c.req.header("x-principal-kind") ?? "") as PrincipalKind,
-  };
-}
+// The stopgap `Auth`. It reads the principal from headers, and nothing checks them.
+// Any caller can name any principal, so the Worker serves nothing until the
+// operator sets TASKS_UNSAFE_TRUST_HEADERS=1. It goes away when the identity
+// Worker API (agentic-identity 0.2.0) can resolve a credential: pass that `Auth` to createApp.
+const headerAuth: Auth = {
+  async authenticate(request) {
+    const id = request.headers.get("x-principal-id");
+    const kind = request.headers.get("x-principal-kind");
+    return id && kind ? trustedContext(id, kind) : null;
+  },
+};
 
 // An empty body counts as {} so actions like claim need no body.
 async function jsonBody<T>(c: Context): Promise<T> {
@@ -79,13 +84,19 @@ export const tasksOnD1: Resolve = (env) => {
   return tasks;
 };
 
-export function createApp(resolve: Resolve) {
-  const api = new Hono<{ Bindings: Bindings }>().basePath("/api/v1/tasks");
+// With no `auth`, the Worker runs on header trust, for local dev only. With an
+// `auth`, every request needs a credential that it resolves, and the trust flag
+// plays no part.
+export function createApp(resolve: Resolve, auth?: Auth) {
+  const api = new Hono<{ Bindings: Bindings; Variables: { ctx: PrincipalContext } }>().basePath(
+    "/api/v1/tasks",
+  );
+  const trustHeaders = auth === undefined;
 
   // A Worker reads its env per request, not at import time, so the gate runs
   // on every request. Set TASKS_UNSAFE_TRUST_HEADERS=1 only behind a gateway.
   api.use("*", async (c, next) => {
-    if (c.env?.TASKS_UNSAFE_TRUST_HEADERS !== "1") {
+    if (trustHeaders && c.env?.TASKS_UNSAFE_TRUST_HEADERS !== "1") {
       return c.json(
         {
           error: {
@@ -106,10 +117,19 @@ export function createApp(resolve: Resolve) {
         503,
       );
     }
+    const ctx = await (auth ?? headerAuth).authenticate(c.req.raw);
+    if (ctx === null) {
+      return c.json(
+        { error: { code: "UNAUTHENTICATED", message: "Send a valid credential." } },
+        401,
+      );
+    }
+    c.set("ctx", ctx);
     await next();
   });
 
   const tasksOf = (c: Context): Tasks => resolve(c.env as Bindings);
+  const ctxOf = (c: Context): PrincipalContext => c.get("ctx");
 
   api.onError((error, c) => {
     if (error instanceof TaskError) {
@@ -132,24 +152,40 @@ export function createApp(resolve: Resolve) {
 
   api.post("/boards", async (c) => {
     const body = await jsonBody<{ title?: string }>(c);
-    return c.json(await tasksOf(c).createBoard({ title: body.title ?? "" }, actorOf(c)), 201);
+    return c.json(await tasksOf(c).createBoard({ title: body.title ?? "" }, ctxOf(c)), 201);
   });
 
   api.get("/boards/:boardId", async (c) =>
-    c.json(await tasksOf(c).getBoard(c.req.param("boardId"))),
+    c.json(await tasksOf(c).getBoard(c.req.param("boardId"), ctxOf(c))),
   );
 
   api.post("/boards/:boardId/columns", async (c) => {
     const body = await jsonBody<{ name?: string }>(c);
     return c.json(
-      await tasksOf(c).addColumn(c.req.param("boardId"), body.name ?? "", actorOf(c)),
+      await tasksOf(c).addColumn(c.req.param("boardId"), body.name ?? "", ctxOf(c)),
       201,
     );
   });
 
+  api.put("/boards/:boardId/members/:subjectId", async (c) => {
+    const body = await jsonBody<{ role?: Role }>(c);
+    await tasksOf(c).shareBoard(
+      c.req.param("boardId"),
+      c.req.param("subjectId"),
+      body.role as Role,
+      ctxOf(c),
+    );
+    return c.json({ shared: true });
+  });
+
+  api.delete("/boards/:boardId/members/:subjectId", async (c) => {
+    await tasksOf(c).unshareBoard(c.req.param("boardId"), c.req.param("subjectId"), ctxOf(c));
+    return c.json({ unshared: true });
+  });
+
   api.post("/tasks", async (c) => {
     const body = await jsonBody<Parameters<Tasks["createTask"]>[0]>(c);
-    return c.json(await tasksOf(c).createTask(body, actorOf(c)), 201);
+    return c.json(await tasksOf(c).createTask(body, ctxOf(c)), 201);
   });
 
   api.get("/tasks", async (c) => {
@@ -158,49 +194,52 @@ export function createApp(resolve: Resolve) {
       throw new TaskError("INVALID_INPUT", "status must be open or closed");
     }
     return c.json(
-      await tasksOf(c).listTasks({
-        boardId: c.req.query("boardId"),
-        columnId: c.req.query("columnId"),
-        status: status as TaskStatus | undefined,
-      }),
+      await tasksOf(c).listTasks(
+        {
+          boardId: c.req.query("boardId") as string,
+          columnId: c.req.query("columnId"),
+          status: status as TaskStatus | undefined,
+        },
+        ctxOf(c),
+      ),
     );
   });
 
-  api.get("/tasks/:taskId", async (c) => c.json(await tasksOf(c).getTask(c.req.param("taskId"))));
+  api.get("/tasks/:taskId", async (c) => c.json(await tasksOf(c).getTask(c.req.param("taskId"), ctxOf(c))));
 
   api.patch("/tasks/:taskId", async (c) => {
     const body = await jsonBody<Parameters<Tasks["updateTask"]>[1]>(c);
-    return c.json(await tasksOf(c).updateTask(c.req.param("taskId"), body, actorOf(c)));
+    return c.json(await tasksOf(c).updateTask(c.req.param("taskId"), body, ctxOf(c)));
   });
 
   api.post("/tasks/:taskId/move", async (c) => {
     const body = await jsonBody<Parameters<Tasks["moveTask"]>[1]>(c);
-    return c.json(await tasksOf(c).moveTask(c.req.param("taskId"), body, actorOf(c)));
+    return c.json(await tasksOf(c).moveTask(c.req.param("taskId"), body, ctxOf(c)));
   });
 
   api.post("/tasks/:taskId/claim", async (c) => {
     const body = await jsonBody<{ ttlMs?: number }>(c);
-    return c.json(await tasksOf(c).claim(c.req.param("taskId"), actorOf(c), body));
+    return c.json(await tasksOf(c).claim(c.req.param("taskId"), ctxOf(c), body));
   });
 
   api.post("/tasks/:taskId/release", async (c) =>
-    c.json(await tasksOf(c).release(c.req.param("taskId"), actorOf(c))),
+    c.json(await tasksOf(c).release(c.req.param("taskId"), ctxOf(c))),
   );
 
   api.post("/tasks/:taskId/close", async (c) =>
-    c.json(await tasksOf(c).closeTask(c.req.param("taskId"), actorOf(c))),
+    c.json(await tasksOf(c).closeTask(c.req.param("taskId"), ctxOf(c))),
   );
 
   api.post("/tasks/:taskId/progress", async (c) => {
     const body = await jsonBody<{ note?: string }>(c);
     return c.json(
-      await tasksOf(c).progress(c.req.param("taskId"), body.note ?? "", actorOf(c)),
+      await tasksOf(c).progress(c.req.param("taskId"), body.note ?? "", ctxOf(c)),
       201,
     );
   });
 
   api.get("/tasks/:taskId/progress", async (c) =>
-    c.json(await tasksOf(c).listProgress(c.req.param("taskId"))),
+    c.json(await tasksOf(c).listProgress(c.req.param("taskId"), ctxOf(c))),
   );
 
   return api;

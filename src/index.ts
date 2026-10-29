@@ -13,6 +13,7 @@ export type {
 } from "./model.js";
 export { createFileStore } from "./file-store.js";
 export { createTasks } from "./tasks.js";
+export { trustedContext } from "./principal.js";
 export type {
   ClaimOptions,
   MoveTarget,

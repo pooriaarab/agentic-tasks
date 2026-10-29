@@ -3,12 +3,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { TaskError, type Claim, type Principal, type Task } from "./model.js";
-import { createMemoryStore, type Doc, type Store } from "agentic-identity";
+import { createMemoryStore, createSharing, type Doc, type PrincipalContext, type Store } from "agentic-identity";
 import { createFileStore } from "./file-store.js";
 import { createTasks, type Tasks } from "./tasks.js";
+import { trustedContext } from "./principal.js";
 
-const ALICE: Principal = { id: "alice", kind: "human" };
-const BOT: Principal = { id: "bot-1", kind: "agent_of_human" };
+const ALICE_P: Principal = { id: "alice", kind: "human" };
+const BOT_P: Principal = { id: "bot-1", kind: "agent_of_human" };
+const ALICE = trustedContext(ALICE_P.id, ALICE_P.kind);
+const BOT = trustedContext(BOT_P.id, BOT_P.kind);
 const TEN_MINUTES = 600_000;
 
 interface Harness {
@@ -37,8 +40,21 @@ const backends: Backend[] = [
 async function harnessFor(open: Backend[1]): Promise<Harness> {
   const { store, cleanup } = await open();
   let ms = Date.parse("2026-10-28T10:00:00Z");
+  const raw = createTasks({ store, now: () => new Date(ms) });
+  // Most cases here test claims, not roles. A board that alice makes is also
+  // shared with bot-1 as an editor. The role cases below use `raw` tasks.
+  const tasks: Tasks = {
+    ...raw,
+    async createBoard(input, ctx) {
+      const board = await raw.createBoard(input, ctx);
+      if (ctx.principalId === ALICE.principalId) {
+        await raw.shareBoard(board.id, BOT.principalId, "editor", ctx);
+      }
+      return board;
+    },
+  };
   return {
-    tasks: createTasks({ store, now: () => new Date(ms) }),
+    tasks,
     store,
     advance: (delta) => {
       ms += delta;
@@ -92,7 +108,7 @@ describe.each(backends)("claim rules on the %s store", (_name, open) => {
   it("claims an open task and records the holder and expiry", async () => {
     const id = await openTask();
     const task = await h.tasks.claim(id, BOT, { ttlMs: TEN_MINUTES });
-    expect(task.claim?.holder).toEqual(BOT);
+    expect(task.claim?.holder).toEqual(BOT_P);
     expect(task.claim?.expiresAt).toBe("2026-10-28T10:10:00.000Z");
   });
 
@@ -102,7 +118,7 @@ describe.each(backends)("claim rules on the %s store", (_name, open) => {
     await expect(
       errorCode(h.tasks.claim(id, BOT, { ttlMs: TEN_MINUTES })),
     ).resolves.toBe("CLAIM_HELD");
-    expect((await h.tasks.getTask(id)).claim?.holder).toEqual(ALICE);
+    expect((await h.tasks.getTask(id, ALICE)).claim?.holder).toEqual(ALICE_P);
   });
 
   it("renews the claim when the holder claims again while it is live", async () => {
@@ -128,7 +144,7 @@ describe.each(backends)("claim rules on the %s store", (_name, open) => {
     await h.tasks.claim(id, ALICE, { ttlMs: TEN_MINUTES });
     h.advance(TEN_MINUTES);
     const task = await h.tasks.claim(id, BOT, { ttlMs: TEN_MINUTES });
-    expect(task.claim?.holder).toEqual(BOT);
+    expect(task.claim?.holder).toEqual(BOT_P);
   });
 
   it("rejects a claim on a closed task", async () => {
@@ -147,12 +163,12 @@ describe.each(backends)("claim rules on the %s store", (_name, open) => {
 
   it("treats ids that name object prototype members as missing", async () => {
     for (const id of ["__proto__", "constructor", "toString"]) {
-      await expect(errorCode(h.tasks.getTask(id))).resolves.toBe("NOT_FOUND");
+      await expect(errorCode(h.tasks.getTask(id, ALICE))).resolves.toBe("NOT_FOUND");
       await expect(
         errorCode(h.tasks.claim(id, BOT, { ttlMs: TEN_MINUTES })),
       ).resolves.toBe("NOT_FOUND");
     }
-    await expect(h.tasks.listTasks({})).resolves.toEqual([]);
+    await expect(errorCode(h.tasks.listTasks({ boardId: "__proto__" }, ALICE))).resolves.toBe("NOT_FOUND");
   });
 
   it("rejects a ttl that is not a positive integer of milliseconds", async () => {
@@ -166,7 +182,7 @@ describe.each(backends)("claim rules on the %s store", (_name, open) => {
 
   it("rejects a principal whose kind is not a known kind", async () => {
     const id = await openTask();
-    const impostor = { id: "bot-1", kind: "root" } as unknown as Principal;
+    const impostor = trustedContext("bot-1", "root");
     await expect(
       errorCode(h.tasks.claim(id, impostor, { ttlMs: TEN_MINUTES })),
     ).resolves.toBe("INVALID_INPUT");
@@ -176,7 +192,7 @@ describe.each(backends)("claim rules on the %s store", (_name, open) => {
     const id = await openTask();
     await h.tasks.claim(id, ALICE, { ttlMs: TEN_MINUTES });
     await expect(errorCode(h.tasks.release(id, BOT))).resolves.toBe("NOT_HOLDER");
-    expect((await h.tasks.getTask(id)).claim?.holder).toEqual(ALICE);
+    expect((await h.tasks.getTask(id, ALICE)).claim?.holder).toEqual(ALICE_P);
   });
 
   it("rejects a release when no claim exists", async () => {
@@ -190,13 +206,13 @@ describe.each(backends)("claim rules on the %s store", (_name, open) => {
     const released = await h.tasks.release(id, ALICE);
     expect(released.claim).toBeUndefined();
     const task = await h.tasks.claim(id, BOT, { ttlMs: TEN_MINUTES });
-    expect(task.claim?.holder).toEqual(BOT);
+    expect(task.claim?.holder).toEqual(BOT_P);
   });
 
   it("treats the same id with another kind as another principal", async () => {
     const id = await openTask();
     await h.tasks.claim(id, ALICE, { ttlMs: TEN_MINUTES });
-    const asAgent: Principal = { id: "alice", kind: "agent_of_human" };
+    const asAgent = trustedContext("alice", "agent_of_human");
     await expect(
       errorCode(h.tasks.claim(id, asAgent, { ttlMs: TEN_MINUTES })),
     ).resolves.toBe("CLAIM_HELD");
@@ -214,9 +230,9 @@ describe.each(backends)("claim rules on the %s store", (_name, open) => {
     const id = await openTask();
     await h.tasks.claim(id, ALICE, { ttlMs: TEN_MINUTES });
     await expect(errorCode(h.tasks.closeTask(id, BOT))).resolves.toBe("CLAIM_HELD");
-    const task = await h.tasks.getTask(id);
+    const task = await h.tasks.getTask(id, ALICE);
     expect(task.status).toBe("open");
-    expect(task.claim?.holder).toEqual(ALICE);
+    expect(task.claim?.holder).toEqual(ALICE_P);
   });
 
   it("lets another principal close the task once the claim expires", async () => {
@@ -238,7 +254,7 @@ describe.each(backends)("claim rules on the %s store", (_name, open) => {
   it("treats a claim with an unparseable expiry as live, so nobody takes it", async () => {
     const id = await openTask();
     await writeRawClaim(id, {
-      holder: ALICE,
+      holder: ALICE_P,
       claimedAt: "2026-10-28T10:00:00.000Z",
       expiresAt: "soon",
     });
@@ -246,13 +262,13 @@ describe.each(backends)("claim rules on the %s store", (_name, open) => {
       errorCode(h.tasks.claim(id, BOT, { ttlMs: TEN_MINUTES })),
     ).resolves.toBe("CLAIM_HELD");
     await expect(errorCode(h.tasks.closeTask(id, BOT))).resolves.toBe("CLAIM_HELD");
-    expect((await h.tasks.getTask(id)).claim?.holder).toEqual(ALICE);
+    expect((await h.tasks.getTask(id, ALICE)).claim?.holder).toEqual(ALICE_P);
   });
 
   it("counts a claim with a non-text expiry as live", async () => {
     const id = await openTask();
     await writeRawClaim(id, {
-      holder: ALICE,
+      holder: ALICE_P,
       claimedAt: "2026-10-28T10:00:00.000Z",
       expiresAt: 1 as unknown as string,
     });
@@ -266,7 +282,7 @@ describe.each(backends)("claim rules on the %s store", (_name, open) => {
     "counts a claim whose expiry %j is not the stored time format as live",
     async (expiresAt) => {
       const id = await openTask();
-      await writeRawClaim(id, { holder: ALICE, claimedAt: "2026-10-28T10:00:00.000Z", expiresAt });
+      await writeRawClaim(id, { holder: ALICE_P, claimedAt: "2026-10-28T10:00:00.000Z", expiresAt });
       await expect(
         errorCode(h.tasks.claim(id, BOT, { ttlMs: TEN_MINUTES })),
       ).resolves.toBe("CLAIM_HELD");
@@ -289,7 +305,7 @@ describe.each(backends)("claim rules on the %s store", (_name, open) => {
   it("writes a new claimedAt when a renewed claim has a bad one", async () => {
     const id = await openTask();
     await writeRawClaim(id, {
-      holder: ALICE,
+      holder: ALICE_P,
       claimedAt: 42 as unknown as string,
       expiresAt: "2026-10-28T10:05:00.000Z",
     });
@@ -324,7 +340,7 @@ describe.each(backends)("claim rules on the %s store", (_name, open) => {
     const id = await openTask();
     await h.tasks.progress(id, "drafted the outline", BOT);
     await h.tasks.progress(id, "reviewed the outline", ALICE);
-    const entries = await h.tasks.listProgress(id);
+    const entries = await h.tasks.listProgress(id, ALICE);
     expect(entries.map((e) => e.note)).toEqual([
       "drafted the outline",
       "reviewed the outline",
@@ -369,7 +385,7 @@ describe.each(backends)("boards, columns, and tasks on the %s store", (_name, op
     });
     const second = await h.tasks.createTask({ boardId: board.id, title: "two" }, ALICE);
     expect(second.position).toBe(0);
-    const listed = await h.tasks.listTasks({ boardId: board.id });
+    const listed = await h.tasks.listTasks({ boardId: board.id }, ALICE);
     expect(listed.map((task) => task.title).sort()).toEqual(["one", "two"]);
   });
 
@@ -413,7 +429,7 @@ describe.each(backends)("boards, columns, and tasks on the %s store", (_name, op
     await h.tasks.createTask({ boardId: board.id, title: "Already here" }, ALICE);
     const moveMe = await h.tasks.createTask({ boardId: board.id, title: "Mover" }, ALICE);
     await h.tasks.moveTask(moveMe.id, { columnId: columnDoing }, ALICE);
-    const moved = await h.tasks.getTask(moveMe.id);
+    const moved = await h.tasks.getTask(moveMe.id, ALICE);
     expect(moved.columnId).toBe(columnDoing);
     expect(moved.position).toBe(0);
     expect(todo.columns[0]?.id).not.toBe(columnDoing);
@@ -434,11 +450,12 @@ describe.each(backends)("boards, columns, and tasks on the %s store", (_name, op
 
   it("records the creator and the last editor with their kinds", async () => {
     const board = await h.tasks.createBoard({ title: "Sprint" }, BOT);
+    await h.tasks.shareBoard(board.id, ALICE.principalId, "editor", BOT);
     await h.tasks.addColumn(board.id, "Todo", BOT);
     const task = await h.tasks.createTask({ boardId: board.id, title: "A" }, BOT);
     const edited = await h.tasks.updateTask(task.id, { title: "B" }, ALICE);
-    expect(edited.createdBy).toEqual(BOT);
-    expect(edited.updatedBy).toEqual(ALICE);
+    expect(edited.createdBy).toEqual(BOT_P);
+    expect(edited.updatedBy).toEqual(ALICE_P);
     expect(edited.title).toBe("B");
   });
 
@@ -467,10 +484,8 @@ describe("claims across two stores on one file", () => {
       const board = await one.createBoard({ title: "Sprint" }, ALICE);
       await one.addColumn(board.id, "Todo", ALICE);
       const task = await one.createTask({ boardId: board.id, title: "Write spec" }, ALICE);
-      const claimants = Array.from({ length: 8 }, (_, i): Principal => ({
-        id: `bot-${i}`,
-        kind: "agent_of_human",
-      }));
+      const claimants = Array.from({ length: 8 }, (_, i) => trustedContext(`bot-${i}`, "agent_of_human"));
+      for (const who of claimants) await one.shareBoard(board.id, who.principalId, "editor", ALICE);
       const codes = await Promise.all(
         claimants.map((who, i) => errorCode((i % 2 === 0 ? one : two).claim(task.id, who))),
       );
@@ -493,6 +508,7 @@ describe("a claim that loses a race", () => {
       const board = await winner.createBoard({ title: "Sprint" }, ALICE);
       await winner.addColumn(board.id, "Todo", ALICE);
       const task = await winner.createTask({ boardId: board.id, title: "Write spec" }, ALICE);
+      await winner.shareBoard(board.id, BOT.principalId, "editor", ALICE);
 
       const inner = createFileStore(file);
       let fired = false;
@@ -516,9 +532,123 @@ describe("a claim that loses a race", () => {
         },
       });
       await expect(errorCode(loser.claim(task.id, BOT))).resolves.toBe("CLAIM_HELD");
-      expect((await winner.getTask(task.id)).claim?.holder).toEqual(ALICE);
+      expect((await winner.getTask(task.id, ALICE)).claim?.holder).toEqual(ALICE_P);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+});
+
+// Failure list for access, written before the code:
+//  1. A caller with no role on the board cannot read or write it.
+//  2. A viewer reads but cannot add a note, change a task, or claim.
+//  3. A commenter adds notes but cannot change a task or claim.
+//  4. An editor changes tasks and claims, but cannot share the board.
+//  5. A role on one board gives nothing on another board.
+//  6. After unshare the access is gone, and the last owner cannot be removed.
+//  7. An agent keeps only the scopes that are left after its chain narrows them,
+//     even when the human it acts for owns the board.
+//  8. Making a board needs the board:write scope.
+//  9. Every check writes an audit entry that labels an agent action as machine-made.
+describe("board roles", () => {
+  const CAROL = trustedContext("carol", "human");
+  let tasks: Tasks;
+  let store: Store;
+  let boardId: string;
+  let taskId: string;
+
+  beforeEach(async () => {
+    store = createMemoryStore({ region: "eu" });
+    tasks = createTasks({ store });
+    const board = await tasks.createBoard({ title: "Sprint" }, ALICE);
+    boardId = board.id;
+    await tasks.addColumn(boardId, "Todo", ALICE);
+    taskId = (await tasks.createTask({ boardId, title: "Write spec" }, ALICE)).id;
+  });
+
+  const code = (work: Promise<unknown>) => errorCode(work);
+
+  it("refuses a caller with no role", async () => {
+    await expect(code(tasks.getBoard(boardId, CAROL))).resolves.toBe("FORBIDDEN");
+    await expect(code(tasks.getTask(taskId, CAROL))).resolves.toBe("FORBIDDEN");
+    await expect(code(tasks.listTasks({ boardId }, CAROL))).resolves.toBe("FORBIDDEN");
+    await expect(code(tasks.claim(taskId, CAROL))).resolves.toBe("FORBIDDEN");
+  });
+
+  it("lets a viewer read and nothing else", async () => {
+    await tasks.shareBoard(boardId, "carol", "viewer", ALICE);
+    await expect(code(tasks.getTask(taskId, CAROL))).resolves.toBe("NO_ERROR");
+    await expect(code(tasks.listTasks({ boardId }, CAROL))).resolves.toBe("NO_ERROR");
+    await expect(code(tasks.listProgress(taskId, CAROL))).resolves.toBe("NO_ERROR");
+    await expect(code(tasks.progress(taskId, "note", CAROL))).resolves.toBe("FORBIDDEN");
+    await expect(code(tasks.updateTask(taskId, { title: "x" }, CAROL))).resolves.toBe("FORBIDDEN");
+    await expect(code(tasks.claim(taskId, CAROL))).resolves.toBe("FORBIDDEN");
+  });
+
+  it("lets a commenter add notes and nothing more", async () => {
+    await tasks.shareBoard(boardId, "carol", "commenter", ALICE);
+    await expect(code(tasks.progress(taskId, "note", CAROL))).resolves.toBe("NO_ERROR");
+    await expect(code(tasks.updateTask(taskId, { title: "x" }, CAROL))).resolves.toBe("FORBIDDEN");
+    await expect(code(tasks.claim(taskId, CAROL))).resolves.toBe("FORBIDDEN");
+  });
+
+  it("lets an editor change and claim, but not share", async () => {
+    await tasks.shareBoard(boardId, "carol", "editor", ALICE);
+    await expect(code(tasks.claim(taskId, CAROL))).resolves.toBe("NO_ERROR");
+    await expect(code(tasks.addColumn(boardId, "Done", CAROL))).resolves.toBe("NO_ERROR");
+    await expect(code(tasks.shareBoard(boardId, "dave", "viewer", CAROL))).resolves.toBe("FORBIDDEN");
+  });
+
+  it("gives nothing on another board", async () => {
+    await tasks.shareBoard(boardId, "carol", "editor", ALICE);
+    const other = await tasks.createBoard({ title: "Other" }, ALICE);
+    await expect(code(tasks.getBoard(other.id, CAROL))).resolves.toBe("FORBIDDEN");
+  });
+
+  it("removes access on unshare and keeps the last owner", async () => {
+    await tasks.shareBoard(boardId, "carol", "editor", ALICE);
+    await tasks.unshareBoard(boardId, "carol", ALICE);
+    await expect(code(tasks.getBoard(boardId, CAROL))).resolves.toBe("FORBIDDEN");
+    await expect(code(tasks.unshareBoard(boardId, ALICE.principalId, ALICE))).resolves.toBe("INVALID_INPUT");
+  });
+
+  it("cuts an agent down to the scopes that its chain leaves", async () => {
+    // alice owns the board. The agent acts for her with write scope only.
+    const agent: PrincipalContext = {
+      principalId: "bot-9",
+      kind: "agent_of_human",
+      chain: [
+        { id: "alice", kind: "human" },
+        { id: "bot-9", kind: "agent_of_human" },
+      ],
+      scopes: ["board:write"],
+    };
+    await expect(code(tasks.claim(taskId, agent))).resolves.toBe("NO_ERROR");
+    await expect(code(tasks.shareBoard(boardId, "dave", "viewer", agent))).resolves.toBe("FORBIDDEN");
+    const readOnly = { ...agent, scopes: ["board:read"] };
+    await expect(code(tasks.getTask(taskId, readOnly))).resolves.toBe("NO_ERROR");
+    await expect(code(tasks.updateTask(taskId, { title: "x" }, readOnly))).resolves.toBe("FORBIDDEN");
+  });
+
+  it("needs the board:write scope to make a board", async () => {
+    const narrow = { ...ALICE, scopes: ["board:read"] };
+    await expect(code(tasks.createBoard({ title: "No" }, narrow))).resolves.toBe("FORBIDDEN");
+  });
+
+  it("writes an audit entry that labels an agent as machine-made", async () => {
+    const agent: PrincipalContext = {
+      principalId: "bot-9",
+      kind: "agent_of_human",
+      chain: [
+        { id: "alice", kind: "human" },
+        { id: "bot-9", kind: "agent_of_human" },
+      ],
+      scopes: ["board:write"],
+    };
+    await tasks.claim(taskId, agent);
+    const audit = await createSharing(store).listAudit(ALICE, boardId);
+    const entry = audit.find((e) => e.principalId === "bot-9");
+    expect(entry).toMatchObject({ principalKind: "agent_of_human", machineMade: true, outcome: "allowed" });
+    expect(entry?.chain.map((step) => step.id)).toEqual(["alice", "bot-9"]);
   });
 });

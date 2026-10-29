@@ -9,15 +9,37 @@ Task boards where people and agents claim and finish work.
 
 > Status: early. The library, CLI, and MCP server use the shared `Store` port
 > from `agentic-identity`. The CLI keeps data in a local JSON file.
-> The HTTP API runs as a Worker on a D1 database, but it has no authentication
-> yet. The package is not on npm yet.
+> The HTTP API runs as a Worker on a D1 database. Board roles come from
+> `agentic-identity`. Sign-in does not exist yet, so the Worker has a local-dev
+> stopgap (see the caution). The package is not on npm yet.
 
 > [!CAUTION]
-> Do not expose the HTTP API to the public internet. The Worker trusts the
-> `X-Principal-Id` and `X-Principal-Kind` headers. Any caller can act as any
-> person or agent. The Worker answers 503 until you set
-> `TASKS_UNSAFE_TRUST_HEADERS=1`. Set it only behind a gateway that checks
-> identity and sets those headers itself.
+> Do not expose the HTTP API to the public internet. The sign-in stopgap trusts
+> the `X-Principal-Id` and `X-Principal-Kind` headers. Any caller can name any
+> person or agent, and the role of that name decides what the call may do. The
+> Worker answers 503 until you set `TASKS_UNSAFE_TRUST_HEADERS=1`. Use it for
+> local dev only. It goes away when the identity Worker API (`agentic-identity`
+> 0.2.0) can resolve a credential: pass that `Auth` to `createApp`, and the flag
+> and the headers stop mattering.
+
+## Access
+
+Every call has a principal from `agentic-identity`: who acts, the chain it acts
+for, and its scopes. A board is a resource with roles. A call needs a role:
+
+| Role | Can |
+|---|---|
+| viewer | read the board, its tasks, and progress notes |
+| commenter | also add progress notes |
+| editor | also add columns, make, move, edit, claim, release, and close tasks |
+| owner | also share the board and take access away |
+
+The person who makes a board owns it. An agent that acts for a person gets that
+person's role, cut down by the scopes that its chain leaves. Every check writes
+an audit entry that keeps the chain and labels an agent action as machine-made.
+Share with the SDK (`shareBoard`, `unshareBoard`), the CLI (`share`, `unshare`),
+the MCP tools (`share_board`, `unshare_board`), or `PUT` and `DELETE` on
+`/boards/:id/members/:subjectId`. Listing tasks needs a `boardId`.
 
 ## Planned features
 
@@ -26,7 +48,7 @@ Task boards where people and agents claim and finish work.
 - Due dates, labels, and assignees.
 - Agent tools: list, claim, update, and close tasks.
 - Real-time updates.
-- Share by invite or link, with roles.
+- Share by invite or link. Roles work now. Invites and links are not wired in yet.
 
 ## Surfaces
 
@@ -69,7 +91,11 @@ is refused in all of them.
 
 ## Limits
 
-- The HTTP API has no authentication. It trusts the principal headers.
+- The HTTP API has no sign-in yet. It trusts the principal headers, for local dev.
+- The CLI and the MCP server trust the principal that you name, as `git` trusts
+  `user.name`. Anyone who can open the store file can name any principal.
+- A role check and the action that follows are two steps. A role that is taken
+  away at that moment can still finish the call that began before.
 - The JSON file store works on one machine. Do not put the file on a network share.
 - The CLI file format changed. It does not read files from earlier releases.
 - Two tasks made at the same moment in one column can share a position. Two notes
