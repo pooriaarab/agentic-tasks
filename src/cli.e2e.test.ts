@@ -222,6 +222,10 @@ describe("agentic-tasks CLI (built binary)", { timeout: 30_000 }, () => {
       const result = spawnSync(process.execPath, [CLI, flag], { encoding: "utf8" });
       expect([result.status, result.stdout.trim()]).toEqual([0, pkg.version]);
     }
+    for (const flag of ["--version", "-v"]) {
+      const result = spawnSync(process.execPath, [CLI, "mcp", flag], { encoding: "utf8", input: "", timeout: 10_000 });
+      expect([result.status, result.stdout.trim()]).toEqual([0, pkg.version]);
+    }
   });
 
   it("prints full usage and exits 0 for each command, mcp included", () => {

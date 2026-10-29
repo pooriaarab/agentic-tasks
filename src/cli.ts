@@ -376,7 +376,9 @@ function scanForHelp(argv: string[]): { help: boolean; words: string[] } {
 
 async function main(argv: string[]): Promise<number> {
   try {
-    if (argv[0] === "--version" || argv[0] === "-v" || argv[0] === "version") {
+    const versionFlags = ["--version", "-v", "version"];
+    // `mcp --version` answers before the server starts.
+    if (versionFlags.includes(argv[0] as string) || (argv[0] === "mcp" && versionFlags.includes(argv[1] as string))) {
       process.stdout.write(`${VERSION}\n`);
       return 0;
     }
