@@ -191,7 +191,7 @@ One package gives you each way in:
 
 ## Exports
 
-The package has these entries. Each one is built into `dist/`.
+The package has these entries. The build writes each one to `dist/`.
 
 | Import | What it is | Where it is described |
 |---|---|---|
@@ -200,7 +200,7 @@ The package has these entries. Each one is built into `dist/`.
 | `agentic-tasks/worker` | The HTTP API as a Hono app for a Cloudflare Worker. | [Worker](#worker) |
 | `agentic-tasks/ui` | `mount`, which renders the task UI in your page. | [Mount the UI](#mount-the-ui-in-your-app) |
 | `agentic-tasks/ui.css` | The styles for `agentic-tasks/ui`. | [Mount the UI](#mount-the-ui-in-your-app) |
-| `agentic-tasks` (bin) | The CLI. `agentic-tasks mcp` serves the MCP tools. | [Surfaces](#surfaces) |
+| `agentic-tasks` (bin) | The CLI. `agentic-tasks mcp` serves the MCP tools. | [CLI and MCP](#cli-and-mcp) |
 
 There is no `agentic-tasks/mcp` entry. Start the MCP server with `npx agentic-tasks mcp`.
 
@@ -234,7 +234,7 @@ await tasks.claim(task.id, ana, { ttlMs: 600_000 });
 
 The default export of `agentic-tasks/worker` is the HTTP API at `/api/v1/tasks`.
 It is a Hono app with a `fetch` handler. It stores data in the D1 database bound as
-`DB`. The package does not serve the web UI. The UI is served by this repo's own Worker.
+`DB`. The package does not serve the web UI. This repo's own Worker serves the UI.
 
 Export the app from your Worker's entry file:
 
@@ -243,7 +243,7 @@ Export the app from your Worker's entry file:
 export { default } from "agentic-tasks/worker";
 ```
 
-Wrangler config. `nodejs_compat` is needed, as in this repo's `wrangler.jsonc`:
+Add this to your Wrangler config. Set the `nodejs_compat` flag, as this repo's `wrangler.jsonc` does:
 
 ```jsonc
 {
@@ -267,8 +267,8 @@ Create the database in the EU with `npx wrangler d1 create agentic-tasks --locat
 
 | Binding or variable | Needed | What it does |
 |---|---|---|
-| `DB` | Yes | The D1 database. Without it the API answers 503 `STORE_NOT_CONFIGURED`. |
-| `TASKS_REGION` | Yes | `eu` or `us`, where the database lives. It is your claim. Without a valid value the API answers 503 `REGION_NOT_CONFIGURED`. |
+| `DB` | Yes | The D1 database. Without it every route except `/health` answers 503 `STORE_NOT_CONFIGURED`. |
+| `TASKS_REGION` | Yes | `eu` or `us`, where the database lives. You state it; the Worker does not detect it. Without a valid value every route except `/health` answers 503 `REGION_NOT_CONFIGURED`. The store refuses a query that D1 serves outside this region. |
 | `TASKS_UNSAFE_LOCAL_TEST_AUTH` | No | `1` trusts the `X-Principal-Id` and `X-Principal-Kind` headers, on loopback requests only. Local dev and tests only. |
 | `TASKS_UNSAFE_LOCAL_REGION` | No | `1` lets `TASKS_REGION` be `unknown`, because local D1 reports no region. Local dev only. |
 
