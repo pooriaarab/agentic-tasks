@@ -17,9 +17,10 @@ Task boards where people and agents claim and finish work.
 > The Worker does not issue credentials. Run the `agentic-identity` Worker on the
 > same D1 database to sign people in and to make keys. `TASKS_UNSAFE_LOCAL_TEST_AUTH=1`
 > swaps the credential for the `X-Principal-Id` and `X-Principal-Kind` headers, and
-> nothing checks them. It serves only a request on `localhost`, `127.0.0.1`, or
-> `[::1]` with no outside client address, and answers 403 to any other.
-> Use it for local dev and tests only. `TASKS_UNSAFE_LOCAL_REGION=1` skips the
+> nothing checks them. It serves only a request that names a loopback host and a
+> loopback client address, and answers 403 to any other. Both are headers, not
+> the socket. Keep `wrangler dev` on its default loopback address, or a caller on
+> your network can forge them. Use it for local dev and tests only. `TASKS_UNSAFE_LOCAL_REGION=1` skips the
 > region check of the database. Use it for local dev only.
 
 ## Access

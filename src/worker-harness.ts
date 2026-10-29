@@ -77,6 +77,7 @@ export async function stopWorker(server: ChildProcess | undefined): Promise<void
 // Writes a root person and a credential for it into the local D1 database in a
 // persist directory, as the identity Worker does at sign-in. Returns the token.
 export async function seedCredential(persistDir: string, personId: string): Promise<string> {
+  process.env.WRANGLER_SEND_METRICS = "false";
   const proxy = await getPlatformProxy<{ DB: D1Like }>({ persist: { path: join(persistDir, "v3") } });
   try {
     const store = createD1Store(proxy.env.DB, { region: "unknown" });

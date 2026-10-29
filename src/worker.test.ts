@@ -22,7 +22,7 @@ function failingWith(error: Error) {
   const app = createApp(() => ({ getBoard: async () => Promise.reject(error) }) as unknown as Tasks);
   return app.request(
     "/api/v1/tasks/boards/b",
-    { headers: { "x-principal-id": "alice", "x-principal-kind": "human" } },
+    { headers: { "x-principal-id": "alice", "x-principal-kind": "human", "cf-connecting-ip": "127.0.0.1" } },
     ENV,
   );
 }
@@ -58,7 +58,8 @@ describe("store errors", () => {
 describe("local test auth", () => {
   const WHO = { "x-principal-id": "alice", "x-principal-kind": "human" };
   const app = createApp(() => ({ getBoard: async () => ({ id: "b" }) }) as unknown as Tasks);
-  const get = async (url: string, headers: Record<string, string> = WHO) =>
+  const LOCAL = { ...WHO, "cf-connecting-ip": "127.0.0.1" };
+  const get = async (url: string, headers: Record<string, string> = LOCAL) =>
     (await app.request(url, { headers }, ENV)).status;
 
   it.each(["http://localhost/", "http://127.0.0.1:8787/", "http://[::1]:8787/"])("serves %s", async (origin) => {
@@ -73,17 +74,29 @@ describe("local test auth", () => {
   );
 
   it("refuses a request that came through the edge, even on a loopback host", async () => {
-    expect(await get("http://localhost/api/v1/tasks/boards/b", { ...WHO, "cf-connecting-ip": "203.0.113.9" })).toBe(403);
+    expect(await get("http://localhost/api/v1/tasks/boards/b", { ...LOCAL, "cf-connecting-ip": "203.0.113.9" })).toBe(403);
   });
 
-  it("serves wrangler dev, which names a loopback client", async () => {
-    expect(await get("http://localhost/api/v1/tasks/boards/b", { ...WHO, "cf-connecting-ip": "127.0.0.1" })).toBe(200);
+  it("refuses a request with no client address, as from a service binding", async () => {
+    expect(await get("http://localhost/api/v1/tasks/boards/b", WHO)).toBe(403);
   });
 
-  it("is off unless the flag is exactly 1", async () => {
-    const off = await app.request("/api/v1/tasks/boards/b", { headers: WHO }, { ...ENV, TASKS_UNSAFE_LOCAL_TEST_AUTH: "true" });
-    expect(off.status).not.toBe(200);
-  });
+  // A D1 with no stored credential, and a region that the local flag allows.
+  const emptyDb = { prepare: () => ({ bind: () => ({ all: async () => ({ results: [], meta: {} }) }) }) };
+  const STORED = { DB: emptyDb, TASKS_REGION: "unknown", TASKS_UNSAFE_LOCAL_REGION: "1" };
+
+  it.each([undefined, "true", "0", "1 ", ""])(
+    "is off when the flag is %j, so headers alone answer 401",
+    async (flag) => {
+      const env = flag === undefined ? STORED : { ...STORED, TASKS_UNSAFE_LOCAL_TEST_AUTH: flag };
+      const response = await createApp(() => ({}) as unknown as Tasks).request(
+        "/api/v1/tasks/boards/b",
+        { headers: LOCAL },
+        env,
+      );
+      expect(response.status).toBe(401);
+    },
+  );
 });
 
 describe("migration", () => {
@@ -124,7 +137,7 @@ describe("app on an Auth port", () => {
     const { app } = await setup();
     const response = await app.request(
       "/api/v1/tasks/boards/x",
-      { headers: { "x-principal-id": "alice", "x-principal-kind": "human" } },
+      { headers: { "x-principal-id": "alice", "x-principal-kind": "human", "cf-connecting-ip": "127.0.0.1" } },
       NO_FLAG,
     );
     expect(response.status).toBe(401);

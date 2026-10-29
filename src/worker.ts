@@ -26,11 +26,12 @@ const LOOPBACK_CLIENTS = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 // The local-only test `Auth`. It reads the principal from headers, and nothing
-// checks them, so it serves only a request that reached the Worker on a loopback
-// host and did not come through the Cloudflare edge. The edge always sets
-// cf-connecting-ip to the client address, and wrangler dev sets it to loopback,
-// so a loopback host with any other client address is refused. Any other request
-// gets no principal.
+// checks them, so it serves only a request that names a loopback host and a
+// loopback client address. wrangler dev sets that address, and the Cloudflare
+// edge sets a real one. Both are headers, not the socket: a caller that can
+// reach a dev server bound to a non-loopback address can forge them. Keep
+// wrangler dev on its default loopback address. Any other request gets no
+// principal.
 export const localTestAuth: Auth = {
   async authenticate(request) {
     if (!isLoopbackRequest(request)) return null;
@@ -42,7 +43,7 @@ export const localTestAuth: Auth = {
 
 export function isLoopbackRequest(request: Request): boolean {
   const client = request.headers.get("cf-connecting-ip");
-  if (client !== null && !LOOPBACK_CLIENTS.has(client)) return false;
+  if (client === null || !LOOPBACK_CLIENTS.has(client)) return false;
   try {
     return LOOPBACK_HOSTS.has(new URL(request.url).hostname);
   } catch {
