@@ -20,7 +20,8 @@ interface Run {
   stderr: string;
 }
 
-describe("agentic-tasks CLI (built binary)", () => {
+// Each test spawns the built CLI many times. 5 s is too tight on a loaded VM.
+describe("agentic-tasks CLI (built binary)", { timeout: 30_000 }, () => {
   let dir: string;
   let file: string;
 
