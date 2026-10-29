@@ -184,10 +184,10 @@ describe("agentic-tasks CLI (built binary)", { timeout: 30_000 }, () => {
     expect(errorCodeOf(run(["list", "--board", board.id, ...BOT]))).toBe("FORBIDDEN");
   });
 
-  it("needs --board to list", () => {
+  it("needs a board to list and says so", () => {
     const result = run(["list", ...ALICE]);
     expect(result.code).toBe(2);
-    expect(result.stderr).toMatch(/--board/);
+    expect(result.stderr).toMatch(/missing board id/);
   });
 
   it("deletes a task, lists boards, and exports a person's data", () => {
@@ -253,6 +253,57 @@ describe("agentic-tasks CLI (built binary)", { timeout: 30_000 }, () => {
     for (const args of [["board", "Sprint"], ["board", "--title", "Sprint"]]) {
       const board = JSON.parse(run([...args, ...ALICE]).stdout) as { title: string };
       expect(board.title).toBe("Sprint");
+    }
+  });
+
+  it("takes each argument as a position or as its flag, with the same result", () => {
+    const { boardId, columnId } = makeBoard();
+    const titled = (args: string[]) =>
+      (JSON.parse(run([...args, ...ALICE]).stdout) as { title: string }).title;
+    expect(titled(["new", boardId, "A"])).toBe("A");
+    expect(titled(["new", boardId, "--title", "B"])).toBe("B");
+    expect(titled(["new", "C", "--board", boardId])).toBe("C");
+    expect(titled(["new", "--board", boardId, "--title", "D", "--column", columnId])).toBe("D");
+    const ids = (args: string[]) =>
+      (JSON.parse(run([...args, ...ALICE]).stdout) as { title: string }[]).map((t) => t.title).sort();
+    expect(ids(["list", boardId])).toEqual(["A", "B", "C", "D"]);
+    expect(ids(["list", "--board", boardId])).toEqual(["A", "B", "C", "D"]);
+    const column = (args: string[]) =>
+      (JSON.parse(run([...args, ...ALICE]).stdout) as { columns: { name: string }[] }).columns.at(-1)!.name;
+    expect(column(["column", boardId, "X"])).toBe("X");
+    expect(column(["column", boardId, "--name", "Y"])).toBe("Y");
+    expect(column(["column", "--board", boardId, "Z"])).toBe("Z");
+    const task = (JSON.parse(run(["new", boardId, "T", ...ALICE]).stdout) as { id: string }).id;
+    for (const args of [["get", task], ["get", "--task", task]]) {
+      expect((JSON.parse(run([...args, ...ALICE]).stdout) as { title: string }).title).toBe("T");
+    }
+    expect(run(["claim", "--task", task, "--ttl-ms", "60000", ...ALICE]).code).toBe(0);
+    expect(run(["progress", "--task", task, "note", ...ALICE]).code).toBe(0);
+    expect(run(["close", "--task", task, ...ALICE]).code).toBe(0);
+  });
+
+  it("refuses a value given both ways and names the argument", () => {
+    for (const [args, word] of [
+      [["board", "Sprint", "--title", "Other"], "title"],
+      [["list", "b1", "--board", "b1"], "board id"],
+      [["get", "t1", "--task", "t1"], "task id"],
+    ] as const) {
+      const result = run([...args, ...ALICE]);
+      expect(result.code).toBe(2);
+      expect(result.stderr).toContain(`give the ${word} once`);
+    }
+  });
+
+  it("names the missing argument for every form", () => {
+    for (const [args, word] of [
+      [["board"], "title"],
+      [["new", "--board", "b1"], "title"],
+      [["new", "--title", "t"], "board id"],
+      [["get"], "task id"],
+    ] as const) {
+      const result = run([...args, ...ALICE]);
+      expect(result.code).toBe(2);
+      expect(result.stderr).toContain(`missing ${word}`);
     }
   });
 
