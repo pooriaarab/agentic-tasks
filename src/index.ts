@@ -12,6 +12,8 @@ export type {
   TaskStatus,
 } from "./model.js";
 export { createFileStore } from "./file-store.js";
+export { tasksAccount } from "./account.js";
+export type { TasksAccount, TasksAccountDeps } from "./account.js";
 export { createTasks } from "./tasks.js";
 export { trustedContext } from "./principal.js";
 export type {
