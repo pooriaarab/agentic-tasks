@@ -6,6 +6,20 @@ All notable changes to this package are in this file. The format follows
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-29
+
+### Added
+
+- A `<board id>`, `<task id>`, `<title>`, or `<name>` argument of the CLI also takes a flag: `--board`, `--task`, `--title`, or `--name`. For example, `list --board <board id>` is the same as `list <board id>`. Give each value once, as the argument or as the flag. `tasks <command> --help` lists the flag forms of that command.
+
+### Security
+
+- `zod` is `^4.6.6`, and the `overrides` field gives the same range to `agentic-design`. It was `^3.25.0`. This clears GHSA-mrhx-c7xc-m3w5.
+
+### Fixed
+
+- The repository's publish workflow runs one release at a time for each ref. A second run waits for the first. Before, two runs could overlap. The package code does not change.
+
 ## [0.7.0] - 2026-10-29
 
 ### Added
