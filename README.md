@@ -187,6 +187,13 @@ One package gives you each way in:
 - **CLI**: `npx agentic-tasks --help`. See the quick start above.
 - **MCP server**: `npx agentic-tasks mcp`, for Claude Code and other MCP clients.
 - **HTTP API**: a Cloudflare Worker at `/api/v1/tasks`. Read the caution above first.
+- **Worker export**: `import { createApp } from "agentic-tasks/worker"`. A host Worker
+  calls `createApp(resolve, auth?)` to serve the HTTP API. `resolve(env)` returns the
+  `Tasks` object from `createTasks`. `auth` is an `Auth` from `agentic-identity` 0.9,
+  or a function of the Worker `env` (the `DB` and `TASKS_REGION` bindings). It
+  replaces the default credential check on D1, and passing it turns off
+  `TASKS_UNSAFE_LOCAL_TEST_AUTH`. The Worker still binds a D1 database as `DB` and
+  sets `TASKS_REGION` (`eu` or `us`). The default export is the ready-made app on D1.
 - **Web UI**: a small app served by the same Worker.
 
 ## UI

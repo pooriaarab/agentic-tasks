@@ -6,6 +6,22 @@ All notable changes to this package are in this file. The format follows
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-10-29
+
+Patch. The package's own functions do not change. A host that also uses
+`agentic-identity` must move its pin to `^0.9.0` before it takes this release. See
+the note under Changed.
+
+### Changed
+
+- The package depends on `agentic-identity` `^0.9.0` (was `^0.6.0`). The package's
+  types come from `agentic-identity`, so the types move with it. The package needs
+  no code change. A host that also pins `agentic-identity` to `^0.6.0` gets two
+  copies of it, and the identity error classes and types from one copy do not
+  match the other. Move the host's pin to `^0.9.0`.
+- The README "Surfaces" list names the `agentic-tasks/worker` export, which a host
+  Worker uses to serve the HTTP API.
+
 ## [0.11.0] - 2026-10-29
 
 ### Changed
