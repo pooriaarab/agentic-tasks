@@ -1,7 +1,7 @@
 import { useState, type FormEvent, type KeyboardEvent } from "react";
 import { Button, CloseIcon, IconButton, Input, PresenceChip, Select, Textarea } from "agentic-design/react";
 import { PRINCIPAL_KINDS, type Principal, type PrincipalKind } from "../src/model.js";
-import type { Board, Task, TasksClient } from "../src/client.js";
+import type { Board, Task, TaskPatch, TasksClient } from "../src/client.js";
 import { nameOf, personOf } from "./people.js";
 import { AgentMark, claimIsLive } from "./BoardView.js";
 import { describe, type Session } from "./session.js";
@@ -14,12 +14,18 @@ export function TaskPanel({ client, session, board, task, onClose, onChanged }: 
   onClose: () => void;
   onChanged: (task: Task) => void;
 }) {
-  const [title, setTitle] = useState(task.title);
-  const [description, setDescription] = useState(task.description);
-  const [labels, setLabels] = useState(task.labels.join(", "));
-  const [dueDate, setDueDate] = useState(task.dueDate ?? "");
-  const [columnId, setColumnId] = useState(task.columnId);
-  const [assignees, setAssignees] = useState<Principal[]>(task.assignees);
+  // A field shows the task as the server has it until the person edits it. The board can change the
+  // task while the panel is open, so a save sends only the fields that were edited.
+  type Edits = { title?: string; description?: string; labels?: string; dueDate?: string; columnId?: string; assignees?: Principal[] };
+  const [edits, setEdits] = useState<Edits>({});
+  const edit = (patch: Edits) => setEdits((e) => ({ ...e, ...patch }));
+  const title = edits.title ?? task.title;
+  const description = edits.description ?? task.description;
+  const labels = edits.labels ?? task.labels.join(", ");
+  const dueDate = edits.dueDate ?? task.dueDate ?? "";
+  const columnId = edits.columnId ?? task.columnId;
+  const assignees = edits.assignees ?? task.assignees;
+  const setAssignees = (list: Principal[]) => edit({ assignees: list });
   const [assigneeId, setAssigneeId] = useState("");
   const [assigneeKind, setAssigneeKind] = useState("");
   const [busy, setBusy] = useState(false);
@@ -53,15 +59,23 @@ export function TaskPanel({ client, session, board, task, onClose, onChanged }: 
   const save = (e?: FormEvent) => {
     e?.preventDefault();
     if (title.trim() === "") return setError("Enter a title.");
-    const labelList = labels.split(",").map((l) => l.trim()).filter(Boolean);
     return run(async () => {
-      let next = await client.updateTask(task.id, {
-        title: title.trim(), description, labels: labelList,
-        dueDate: dueDate === "" ? null : dueDate, assignees,
-      });
-      onChanged(next);
-      if (columnId !== task.columnId) next = await client.moveTask(task.id, { columnId });
-      onChanged(next);
+      const patch: TaskPatch = {};
+      if (edits.title !== undefined) patch.title = edits.title.trim();
+      if (edits.description !== undefined) patch.description = edits.description;
+      if (edits.labels !== undefined) patch.labels = edits.labels.split(",").map((l) => l.trim()).filter(Boolean);
+      if (edits.dueDate !== undefined) patch.dueDate = edits.dueDate === "" ? null : edits.dueDate;
+      if (edits.assignees !== undefined) patch.assignees = edits.assignees;
+      let next = task;
+      if (Object.keys(patch).length > 0) {
+        next = await client.updateTask(task.id, patch);
+        onChanged(next);
+      }
+      if (edits.columnId !== undefined && edits.columnId !== next.columnId) {
+        next = await client.moveTask(task.id, { columnId: edits.columnId });
+        onChanged(next);
+      }
+      setEdits({});
       setSaved(true);
     });
   };
@@ -89,16 +103,16 @@ export function TaskPanel({ client, session, board, task, onClose, onChanged }: 
       </header>
       <form id="task-form" className="panel-form" onSubmit={save} onChange={() => setSaved(false)} noValidate>
         {error && <p className="banner" role="alert">{error}</p>}
-        <input className="bare-input title-input" aria-label="Title" autoFocus value={title} onChange={(e) => setTitle(e.target.value)} />
+        <input className="bare-input title-input" aria-label="Title" autoFocus value={title} onChange={(e) => edit({ title: e.target.value })} />
         <p className="meta">
           <AgentMark task={task} />{" "}
           Created by <PresenceChip entry={personOf(task.createdBy)} />, last changed by{" "}
           <PresenceChip entry={personOf(task.updatedBy)} />.
         </p>
-        <Textarea label="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
-        <Input label="Labels" hint="Separate labels with commas." value={labels} onChange={(e) => setLabels(e.target.value)} />
-        <Input label="Due date" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-        <Select label="Column" value={columnId} onChange={(e) => setColumnId(e.target.value)}>
+        <Textarea label="Description" value={description} onChange={(e) => edit({ description: e.target.value })} />
+        <Input label="Labels" hint="Separate labels with commas." value={labels} onChange={(e) => edit({ labels: e.target.value })} />
+        <Input label="Due date" type="date" value={dueDate} onChange={(e) => edit({ dueDate: e.target.value })} />
+        <Select label="Column" value={columnId} onChange={(e) => edit({ columnId: e.target.value })}>
           {board.columns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </Select>
         <fieldset className="stack">

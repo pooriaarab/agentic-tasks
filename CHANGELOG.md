@@ -11,7 +11,7 @@ All notable changes to this package are in this file. The format follows
 ### Changed
 
 - The web UI has a calmer look. It uses `agentic-design` ^0.5.0 tokens and `agd-` classes only. The style follows Tiny Little Office (https://tinylittleoffice.com, MIT); no code is copied.
-- A task opens in a side panel, not a dialog. The panel keeps the focus and returns it to the card on Escape. On a narrow screen it fills the page.
+- A task opens in a side panel, not a dialog. The panel takes the focus and returns it to the card on Escape. On a narrow screen it fills the page, and the board behind it is inert. A card keeps the focus after a move, and a status line says where it went.
 - The "New task" button moves the focus to the quick add field of the first column.
 
 ### Added

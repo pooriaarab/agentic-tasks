@@ -84,7 +84,8 @@ test("a keyboard alone adds, renames, moves, and opens a task, and focus is visi
   await page.keyboard.press("Alt+ArrowRight");
   await expect(page.getByRole("region", { name: /Doing/ }).locator("button.card-main", { hasText: "Renamed task" })).toBeVisible();
 
-  await card(page, "Renamed task").focus();
+  await expect(card(page, "Renamed task")).toBeFocused();
+  await expect(page.getByRole("status").filter({ hasText: "Moved Renamed task to Doing." })).toBeAttached();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("complementary", { name: "Task details" })).toBeVisible();
   await expect(page.getByLabel("Title")).toBeFocused();
@@ -209,6 +210,7 @@ for (const scheme of ["light", "dark"] as const) {
     await human.put(`${API}/boards/${boardId}/members/agent/writer`, { data: { role: "editor" } });
     const board = await (await human.get(`${API}/boards/${boardId}`)).json();
     await bot.post(`${API}/tasks`, { data: { boardId, title: "Check the links", labels: ["docs"], dueDate: "2099-12-01", assignees: [{ id: me, kind: "human" }], columnId: board.columns[1].id } });
+    await human.post(`${API}/tasks`, { data: { boardId, title: "Pay the invoice", dueDate: "2020-01-01", columnId: board.columns[0].id } });
     await page.reload();
     await expect(card(page, "Check the links")).toBeVisible();
     await check("board");
@@ -246,4 +248,43 @@ test("at 390px wide the board content and the panel fit", async ({ page }) => {
   // The columns scroll inside their own box. The shell top bar belongs to the design package.
   const wide = await page.evaluate(() => [...document.querySelectorAll("body *")].filter((e) => !e.closest(".columns, .agd-shell__actions") && e.getBoundingClientRect().right > 391).map((e) => e.className || e.tagName).slice(0, 8));
   expect(wide).toEqual([]);
+});
+
+test("rename again, rename from the card menu, a stale panel does not undo a move, and a cancelled drag is forgotten", async ({ page }) => {
+  await connect(page, `rev-${unique()}`);
+  await createList(page, "Review");
+  await addTask(page, "Alpha");
+
+  // Rename twice in a row, the second time from the card menu.
+  await card(page, "Alpha").focus();
+  await page.keyboard.press("F2");
+  await page.keyboard.press("ControlOrMeta+a");
+  await page.keyboard.type("Beta");
+  await page.keyboard.press("Enter");
+  await expect(card(page, "Beta")).toBeFocused();
+  await page.getByRole("button", { name: "Actions for Beta" }).click();
+  await page.getByRole("menuitem", { name: "Rename" }).click();
+  await expect(page.getByLabel("Title of Beta")).toBeFocused();
+  await page.keyboard.press("ControlOrMeta+a");
+  await page.keyboard.type("Gamma");
+  await page.keyboard.press("Enter");
+  await expect(card(page, "Gamma")).toBeVisible();
+
+  // Open the panel, move the card elsewhere, then save a description: the move stays.
+  await card(page, "Gamma").click();
+  await card(page, "Gamma").focus();
+  await page.keyboard.press("Alt+ArrowRight");
+  await expect(page.getByRole("region", { name: /Doing/ }).locator("button.card-main", { hasText: "Gamma" })).toBeVisible();
+  await page.getByLabel("Description").fill("Notes");
+  await page.getByRole("button", { name: "Save task" }).click();
+  await expect(page.getByText("Saved.")).toBeVisible();
+  const shown = await page.getByRole("complementary").getByLabel("Column").evaluate((el: HTMLSelectElement) => el.selectedOptions[0]!.text);
+  expect(shown).toBe("Doing");
+  await expect(page.getByRole("region", { name: /Doing/ }).locator("button.card-main", { hasText: "Gamma" })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("region", { name: /Doing/ }).locator("button.card-main", { hasText: "Gamma" })).toBeVisible();
+
+  // A drop that carries no task, such as dropped text, moves nothing.
+  await page.getByRole("region", { name: /Done/ }).dispatchEvent("drop", { dataTransfer: await page.evaluateHandle(() => new DataTransfer()) });
+  await expect(page.getByRole("region", { name: /Doing/ }).locator("button.card-main", { hasText: "Gamma" })).toBeVisible();
 });
