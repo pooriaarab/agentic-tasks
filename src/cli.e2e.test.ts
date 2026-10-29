@@ -348,6 +348,26 @@ describe("agentic-tasks lock file (built binary)", () => {
     expect(run(["claim", id, ...ALICE]).code).toBe(0);
   }, 20_000);
 
+  it("keeps every write when many processes write at once", async () => {
+    const id = makeTask();
+    for (let round = 0; round < 3; round += 1) {
+      const results = await Promise.all(
+        Array.from({ length: 6 }, (_, i) => runAsync(["progress", id, `note ${round}-${i}`, ...ALICE])),
+      );
+      expect(results.map((result) => result.code)).toEqual(Array(6).fill(0));
+    }
+    const notes = JSON.parse(run(["progress", id, ...ALICE]).stdout) as unknown[];
+    expect(notes).toHaveLength(18);
+  }, 60_000);
+
+  it("takes a fresh lock only after the timeout", () => {
+    const id = makeTask();
+    writeLock({ pid: process.pid, createdAt: Date.now() });
+    const started = Date.now();
+    expect(run(["claim", id, ...ALICE]).code).toBe(0);
+    expect(Date.now() - started).toBeGreaterThanOrEqual(2_500);
+  }, 20_000);
+
   it("lets exactly one of two parallel claims through across processes", async () => {
     const id = makeTask();
     const results = await Promise.all([

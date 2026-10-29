@@ -37,13 +37,13 @@ describe("file store", () => {
     ["a list", []],
   ])("refuses %s", async (_name, content) => {
     await writeFile(file, JSON.stringify(content));
-    await expect(createFileStore(file).get("t", "x")).rejects.toThrow();
+    await expect(createFileStore(file).get("t", "x")).rejects.toThrow(/not an agentic-identity store file/);
     expect(JSON.parse(await readFile(file, "utf8"))).toEqual(content);
   });
 
   it("refuses a file that is not JSON", async () => {
     await writeFile(file, "{ not json");
-    await expect(createFileStore(file).get("t", "x")).rejects.toThrow();
+    await expect(createFileStore(file).get("t", "x")).rejects.toThrow(/not an agentic-identity store file/);
     expect(await readFile(file, "utf8")).toBe("{ not json");
   });
 });

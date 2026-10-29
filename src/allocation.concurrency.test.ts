@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createMemoryStore, type Query, type Store, type StoreOps } from "agentic-identity";
+import { createFileStore } from "./file-store.js";
 import { trustedContext } from "./principal.js";
 import { createTasks } from "./tasks.js";
 import { openLocalD1 } from "./worker-harness.js";
@@ -15,8 +16,6 @@ import { openLocalD1 } from "./worker-harness.js";
 //  4. A column that already holds rows with no counter (an older store) still
 //     gets positions above the highest one that exists.
 // One lucky round is not proof, so each case runs several rounds.
-// The file store has no case here. It runs the calls on one path one at a time,
-// so a test that holds one transaction open for another cannot finish on it.
 const ALICE = trustedContext("alice", "human");
 const WRITERS = 6;
 
@@ -32,6 +31,19 @@ const backends: [string, number, Open][] = [
         one: createMemoryStore({ region: "eu", shared }),
         two: createMemoryStore({ region: "eu", shared }),
         cleanup: async () => {},
+      };
+    },
+  ],
+  [
+    "file",
+    10,
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), "agentic-tasks-alloc-"));
+      const file = join(dir, "tasks.json");
+      return {
+        one: createFileStore(file),
+        two: createFileStore(file),
+        cleanup: () => rm(dir, { recursive: true, force: true }),
       };
     },
   ],
@@ -184,6 +196,8 @@ describe.each(backends)("allocation on the %s store", (_name, rounds, open) => {
   }, 120_000);
 });
 
+// The file store has no case here. It runs the calls on one path one at a time,
+// so the gate could only time out and the test would prove nothing.
 describe("allocation with both writers held between read and write", () => {
   it.each(["memory"] as const)("gives two createTask calls on the %s store different positions", async (kind) => {
     const [, , open] = backends.find(([name]) => name === kind)!;
