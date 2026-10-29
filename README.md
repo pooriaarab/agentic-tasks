@@ -196,9 +196,150 @@ One package gives you each way in:
   sets `TASKS_REGION` (`eu` or `us`). The default export is the ready-made app on D1.
 - **Web UI**: a small app served by the same Worker.
 
+## Exports
+
+The package has these entries. The build writes each one to `dist/`.
+
+| Entry or bin | What it is | Where it is described |
+|---|---|---|
+| `agentic-tasks` | The library: `createTasks`, `createFileStore`, `tasksAccount`, `trustedContext`, types, `TaskError`, `PRINCIPAL_KINDS`, and `VERSION`. | [Library](#library) |
+| `agentic-tasks/client` | A typed client for the Worker HTTP API. | [SDK](#sdk) |
+| `agentic-tasks/worker` | The HTTP API as a Hono app for a Cloudflare Worker. | [Worker](#worker) |
+| `agentic-tasks/ui` | `mount`, which renders the task UI in your page, with its option types and the `TasksClient` type. | [Mount the UI](#mount-the-ui-in-your-app) |
+| `agentic-tasks/ui.css` | The styles for `agentic-tasks/ui`. | [Mount the UI](#mount-the-ui-in-your-app) |
+| `agentic-tasks` (bin, `dist/cli.js`) | The CLI. `agentic-tasks mcp` serves the MCP tools. | [CLI and MCP](#cli-and-mcp) |
+
+There is no `agentic-tasks/mcp` entry. Start the MCP server with `npx agentic-tasks mcp`.
+
+### Library
+
+The library reads no environment variables. Give it a store.
+
+Every `Tasks` method takes a principal context from `agentic-identity`. `trustedContext(id, kind)` makes one from a principal id and a kind. It does not check the id or the kind. Use it only in local code that you control.
+
+```ts
+import { createFileStore, createTasks, trustedContext } from "agentic-tasks";
+
+const tasks = createTasks({ store: createFileStore("./agentic-tasks.json") });
+const ana = trustedContext("ana", "human"); // no check: local code only
+
+const board = await tasks.createBoard({ title: "Sprint" }, ana);
+await tasks.addColumn(board.id, "Todo", ana);
+const task = await tasks.createTask({ boardId: board.id, title: "Write the spec" }, ana); // no columnId: the first column
+await tasks.getTask(task.id, ana); // read a task before you claim it
+await tasks.claim(task.id, ana, { ttlMs: 600_000 });
+```
+
+- `createTasks({ store, now? })` returns the `Tasks` methods. `store` is any `Store` from `agentic-identity` that passes its contract suite. `now` is a `() => Date` clock, for tests.
+- `createFileStore(path, options?)` is the JSON file adapter. `options` are the adapter options of `agentic-identity`.
+- `tasksAccount` has `exportAccount` and `eraseAccount`, for a host that runs account export and erase. See [Lifecycle](#lifecycle).
+- A refused call throws `TaskError`. Its `code` is one of `NOT_FOUND`, `FORBIDDEN`, `INVALID_INPUT`, `CLAIM_HELD`, `NOT_HOLDER`, or `TASK_CLOSED`.
+- `PRINCIPAL_KINDS` lists the kinds: `human`, `agent_of_human`, `agent_of_agent`, `agent`, and `user_token`. `VERSION` is the package version.
+
+### Worker
+
+The default export of `agentic-tasks/worker` is the HTTP API at `/api/v1/tasks`.
+It is a Hono app with a `fetch` handler. It stores data in the D1 database bound as
+`DB`. The package does not serve the web UI. This repo's own Worker serves the UI.
+
+Export the app from your Worker's entry file:
+
+```ts
+// src/index.ts
+export { default } from "agentic-tasks/worker";
+```
+
+Add this to your Wrangler config. It sets the `nodejs_compat` flag. The Worker needs this flag because `agentic-identity` uses Node built-ins such as `Buffer`:
+
+```jsonc
+{
+  "name": "my-tasks",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-01-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": { "TASKS_REGION": "eu" },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "agentic-tasks",
+      "database_id": "<id from wrangler d1 create>",
+      "migrations_dir": "migrations"
+    }
+  ]
+}
+```
+
+The package does not ship the schema. Set up the database in this order:
+
+1. Create the database in the EU: `npx wrangler d1 create agentic-tasks --location weur`. For `us`, use `--location wnam` or `--location enam`, and set `TASKS_REGION` to `us`.
+2. Put the id that `d1 create` prints in `database_id` in the config above.
+3. Copy every file in this repo's `migrations/` folder into your `migrations/` folder.
+4. Run `npx wrangler d1 migrations apply DB --remote`.
+
+| Binding or variable | Needed | What it does |
+|---|---|---|
+| `DB` | Yes | The D1 database. Without it every route under `/api/v1/tasks` except `health` answers 503 `STORE_NOT_CONFIGURED`. |
+| `TASKS_REGION` | Yes | `eu` or `us`, where the database lives. You set it. The Worker does not detect it. Without a valid value, every route under `/api/v1/tasks` except `health` answers 503 `REGION_NOT_CONFIGURED`. |
+| `TASKS_UNSAFE_LOCAL_TEST_AUTH` | No | `1` trusts the `X-Principal-Id` and `X-Principal-Kind` headers, on loopback requests only. Use it only for local dev and tests. A request that is not on loopback gets 403 `LOCAL_TEST_AUTH_NOT_LOOPBACK`. |
+| `TASKS_UNSAFE_LOCAL_REGION` | No | `1` lets `TASKS_REGION` be `unknown`, because local D1 reports no region. Set it only for local dev. Never set it in production. |
+
+Without test auth, the default export takes a bearer token, or a `session` cookie, from the request and checks it against the same D1 database. Run the `agentic-identity` Worker on that database to issue credentials. The responses are:
+
+- No credential, or a malformed `Authorization` header: 401 `UNAUTHENTICATED`. The Worker does not read the store.
+- A token that is unknown, expired, or revoked: 401 `UNAUTHENTICATED`, after a store read.
+- A write that sends a valid session cookie and no bearer token: 403 `FORBIDDEN`.
+- The store cannot do the credential check: 503 `STORE_BUSY` with `retry-after: 1`. A retry can succeed.
+- Region mismatch: a request with a well-formed bearer token or a session cookie gets 503 `STORE_BUSY` too, with `retry-after: 1`. The client sees the same response as a busy store. So if `STORE_BUSY` keeps coming back after a few retries, check `TASKS_REGION` and the database location.
+
+The module also has these named exports:
+
+- `createApp(resolve, auth?)` builds the app. `resolve(env)` returns the `Tasks` to use. `env` holds the Worker bindings. The `Bindings` type is not exported, so type `env` as `unknown` in your own code. `auth` is an `Auth` from `agentic-identity`, or a function of `env` that returns one. When you pass `auth`, `TASKS_UNSAFE_LOCAL_TEST_AUTH` has no effect.
+- `tasksOnD1(env)` returns the default `Tasks` on `DB`. `authOnD1(env)` returns the default credential check on `DB`.
+- `localTestAuth` and `isLoopbackRequest` are the loopback test auth.
+
+To use another store or credential check, call `createApp` yourself. It still needs the `DB` binding and a valid `TASKS_REGION`. Without them it answers 503 before it calls your store.
+
+Your `auth` decides what a region mismatch looks like:
+
+- If your `auth` reads the database and throws, the response is 503 `STORE_BUSY`, as above.
+- If your `auth` passes the request and the task store then hits a region mismatch, the response is 500 `INTERNAL`.
+
+Install `agentic-identity` `^0.6.0` in your app. This package uses that version. The example imports its types:
+
+```ts
+import { createApp } from "agentic-tasks/worker";
+import { createTasks } from "agentic-tasks";
+import type { Auth, Store } from "agentic-identity";
+
+declare const myStore: (env: unknown) => Store;  // your Store
+declare const myAuth: Auth;                      // your Auth
+
+export default createApp(
+  (env) => createTasks({ store: myStore(env) }),
+  myAuth,
+);
+```
+
+### CLI and MCP
+
+`npx agentic-tasks` runs the CLI. `npx agentic-tasks mcp` serves the MCP tools over stdio.
+
+Both use the store file that `--file` names, then `AGENTIC_TASKS_FILE`, then `./agentic-tasks.json`. A relative path starts at the current directory of the shell that runs the CLI, or at the directory where the MCP client starts the server. An MCP client config:
+
+```json
+{
+  "mcpServers": {
+    "agentic-tasks": {
+      "command": "npx",
+      "args": ["agentic-tasks", "mcp", "--file", "./agentic-tasks.json"]
+    }
+  }
+}
+```
+
 ## UI
 
-The Worker serves a small web app on `/`. It uses the `agentic-design` package
+This repo's Worker serves a small web app on `/`. It uses the `agentic-design` package
 from npm for tokens, controls, and overlays, and the typed client from
 `agentic-tasks/client` to call the API.
 
