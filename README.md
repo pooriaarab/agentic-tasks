@@ -207,8 +207,8 @@ There is no `agentic-tasks/mcp` entry. Start the MCP server with `npx agentic-ta
 ### Library
 
 The library reads no environment variables. Give it a store. Every call takes a
-principal context from `agentic-identity`. `trustedContext` makes one from a name
-without a check, so use it only in local code that you control.
+principal context from `agentic-identity`. `trustedContext` makes one from a name.
+It does not check the name. Use it only in local code that you control.
 
 ```ts
 import { createFileStore, createTasks, trustedContext } from "agentic-tasks";
@@ -261,7 +261,7 @@ Add this to your Wrangler config. Set the `nodejs_compat` flag. The store adapte
 }
 ```
 
-Create the database in the EU with `npx wrangler d1 create agentic-tasks --location weur`. The package does not ship the schema. Copy `migrations/0001_store.sql` from this repo into your `migrations/` folder, then run `npx wrangler d1 migrations apply DB --remote`.
+Create the database in the EU with `npx wrangler d1 create agentic-tasks --location weur`. The package does not ship the schema. Copy every file in this repo's `migrations/` folder into your `migrations/` folder, then run `npx wrangler d1 migrations apply DB --remote`.
 
 | Binding or variable | Needed | What it does |
 |---|---|---|
@@ -270,7 +270,7 @@ Create the database in the EU with `npx wrangler d1 create agentic-tasks --locat
 | `TASKS_UNSAFE_LOCAL_TEST_AUTH` | No | `1` trusts the `X-Principal-Id` and `X-Principal-Kind` headers, on loopback requests only. Use it only for local dev and tests. A request that is not on loopback gets 403 `LOCAL_TEST_AUTH_NOT_LOOPBACK`. |
 | `TASKS_UNSAFE_LOCAL_REGION` | No | `1` lets `TASKS_REGION` be `unknown`, because local D1 reports no region. Local dev only. |
 
-Without test auth, the Worker reads a bearer credential from the same D1 database.
+Without test auth, the default export reads a bearer credential from the same D1 database.
 Run the `agentic-identity` Worker on that database to issue credentials. A request
 with no valid credential answers 401 `UNAUTHENTICATED`.
 
