@@ -273,7 +273,7 @@ Create the database in the EU with `npx wrangler d1 create agentic-tasks --locat
 
 Without test auth, the default export reads a bearer credential from the same D1 database.
 Run the `agentic-identity` Worker on that database to issue credentials. A request
-with no valid credential answers 401 `UNAUTHENTICATED`. If the store cannot answer the credential check, the request answers 503 `STORE_BUSY` with `retry-after: 1`, and a retry can succeed. A request with a credential gets the same 503 on a region mismatch, but a retry does not help: check `TASKS_REGION` and the database location. A request with no credential gets 401 and never reads the store.
+with no valid credential answers 401 `UNAUTHENTICATED`. If the store cannot do the credential check, the Worker answers 503 `STORE_BUSY` with `retry-after: 1`. A retry can succeed. On a region mismatch, a request with a credential gets the same 503, but a retry does not help. Check `TASKS_REGION` and the database location. A request with no credential gets 401 and never reads the store.
 
 The module also has these named exports:
 
@@ -314,7 +314,7 @@ export default createApp(
 
 ## UI
 
-The Worker serves a small web app on `/`. It uses the `agentic-design` package
+This repo's Worker serves a small web app on `/`. It uses the `agentic-design` package
 from npm for tokens, controls, and overlays, and the typed client from
 `agentic-tasks/client` to call the API.
 
