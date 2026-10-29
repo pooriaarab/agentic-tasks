@@ -10,7 +10,7 @@ All notable changes to this package are in this file. The format follows
 
 ### Added
 
-- `deleteTask`, `listBoards`, and `exportData` on the SDK and the client. The CLI has `delete`, `boards`, and `export`. MCP has `delete_task`, `list_boards`, and `export_data`. The HTTP API has `DELETE /tasks/:id`, `GET /boards`, and `GET /export`.
+- `deleteTask`, `listBoards`, and `exportData` on the SDK and the client. The CLI has `delete`, `boards`, and `export`. MCP has `delete_task`, `list_boards`, and `export_data`. The HTTP API has `DELETE /tasks/:id`, `GET /boards`, and `GET /export`. Delete needs the editor role. While another principal holds a live claim, only the holder or a board owner can delete.
 - An install and CLI quick start in the README.
 
 ### Changed
@@ -18,7 +18,7 @@ All notable changes to this package are in this file. The format follows
 - `agentic-tasks --version` prints the version and exits 0. `--help` prints the full usage and exits 0, at the top level, for each command, and for `mcp`.
 - `board` and `new` take the title as an argument or as `--title`. A command refuses an unknown flag or an extra argument with exit code 2, so `board new --title Sprint` no longer makes a board named "new".
 - The `agentic-identity` dependency is `^0.6.0`. It was `^0.4.0`. A project that pins `agentic-identity` 0.4.x next to this package gets two copies. Move that pin to 0.6.x.
-- The Worker checks every credential with `requirePrincipal` from `agentic-identity/http`. A 401 now sends `www-authenticate: Bearer`. A failed credential check on the store returns 503 `STORE_BUSY` with `retry-after: 1`, so a client can retry. A write that has no bearer `Authorization` header, for example a write with only a session cookie, returns 403 `FORBIDDEN`, from any origin. Any other failure returns 500 `INTERNAL`.
+- The Worker checks every credential with `requirePrincipal` from `agentic-identity/http`. A 401 now sends `www-authenticate: Bearer`. A failed credential check on the store returns 503 `STORE_BUSY` with `retry-after: 1`, so a client can retry. A write authenticated by something other than a bearer token, such as a session cookie, returns 403 `FORBIDDEN` from any origin. A request with no valid credential still gets 401. Any other failure returns 500 `INTERNAL`.
 
 ## [0.6.0] - 2026-10-29
 
