@@ -154,6 +154,15 @@ describe("agentic-tasks CLI (built binary)", () => {
     expect(errorCodeOf(refused)).toBe("INVALID_INPUT");
   });
 
+  it("answers NOT_FOUND for an id that names an object prototype member", () => {
+    makeBoard();
+    for (const id of ["__proto__", "constructor"]) {
+      const result = run(["get", id]);
+      expect(result.code).toBe(1);
+      expect(errorCodeOf(result)).toBe("NOT_FOUND");
+    }
+  });
+
   it("exits 2 with a usage message on an unknown command", () => {
     const result = run(["teleport"]);
     expect(result.code).toBe(2);

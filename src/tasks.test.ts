@@ -145,6 +145,16 @@ describe.each(backends)("claim rules on the %s store", (_name, open) => {
     ).resolves.toBe("NOT_FOUND");
   });
 
+  it("treats ids that name object prototype members as missing", async () => {
+    for (const id of ["__proto__", "constructor", "toString"]) {
+      await expect(errorCode(h.tasks.getTask(id))).resolves.toBe("NOT_FOUND");
+      await expect(
+        errorCode(h.tasks.claim(id, BOT, { ttlMs: TEN_MINUTES })),
+      ).resolves.toBe("NOT_FOUND");
+    }
+    await expect(h.tasks.listTasks({})).resolves.toEqual([]);
+  });
+
   it("rejects a ttl that is not a positive integer of milliseconds", async () => {
     const id = await openTask();
     for (const ttlMs of [0, -1, 1.5, Number.NaN]) {
