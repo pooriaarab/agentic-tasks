@@ -262,7 +262,11 @@ Add this to your Wrangler config. It sets the `nodejs_compat` flag. The `agentic
 }
 ```
 
-Create the database in the EU with `npx wrangler d1 create agentic-tasks --location weur`. For `us`, use `--location wnam` or `--location enam`, and set `TASKS_REGION` to `us`. The package does not ship the schema. Copy every file in this repo's `migrations/` folder into your `migrations/` folder, then run `npx wrangler d1 migrations apply DB --remote`.
+The package does not ship the schema. Set up the database in this order:
+
+1. Create the database in the EU: `npx wrangler d1 create agentic-tasks --location weur`. For `us`, use `--location wnam` or `--location enam`, and set `TASKS_REGION` to `us`.
+2. Copy every file in this repo's `migrations/` folder into your `migrations/` folder.
+3. Run `npx wrangler d1 migrations apply DB --remote`.
 
 | Binding or variable | Needed | What it does |
 |---|---|---|
@@ -271,7 +275,7 @@ Create the database in the EU with `npx wrangler d1 create agentic-tasks --locat
 | `TASKS_UNSAFE_LOCAL_TEST_AUTH` | No | `1` trusts the `X-Principal-Id` and `X-Principal-Kind` headers, on loopback requests only. Use it only for local dev and tests. A request that is not on loopback gets 403 `LOCAL_TEST_AUTH_NOT_LOOPBACK`. |
 | `TASKS_UNSAFE_LOCAL_REGION` | No | `1` lets `TASKS_REGION` be `unknown`, because local D1 reports no region. Local dev only. |
 
-Without test auth, the default export reads a bearer credential from the same D1 database. A write that sends only a session cookie and no bearer token gets 403 `FORBIDDEN`.
+Without test auth, the default export reads a bearer credential from the same D1 database. A write that sends a valid session cookie and no bearer token gets 403 `FORBIDDEN`.
 Run the `agentic-identity` Worker on that database to issue credentials. A request
 with no valid credential answers 401 `UNAUTHENTICATED`. If the store cannot do the credential check, the Worker answers 503 `STORE_BUSY` with `retry-after: 1`. A retry can succeed. On a region mismatch, a request with a credential gets the same 503, but a retry does not help. Check `TASKS_REGION` and the database location. A request with no credential gets 401 and never reads the store.
 
