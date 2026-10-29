@@ -223,7 +223,7 @@ await tasks.getTask(task.id, ana); // read a task before you claim it
 await tasks.claim(task.id, ana, { ttlMs: 600_000 });
 ```
 
-- `createTasks({ store, now? })` returns the `Tasks` methods. `store` is any `Store` from `agentic-identity` that passes its contract suite.
+- `createTasks({ store, now? })` returns the `Tasks` methods. `store` is any `Store` from `agentic-identity` that passes its contract suite. `now` is a `() => Date` clock, for tests.
 - `createFileStore(path, options?)` is the JSON file adapter. `options` are the adapter options of `agentic-identity`.
 - `tasksAccount` has `exportAccount` and `eraseAccount`, for a host that runs account export and erase. See [Lifecycle](#lifecycle).
 - A refused call throws `TaskError`. Its `code` is one of `NOT_FOUND`, `FORBIDDEN`, `INVALID_INPUT`, `CLAIM_HELD`, `NOT_HOLDER`, or `TASK_CLOSED`.
@@ -282,7 +282,7 @@ Without test auth, the default export reads a bearer token, or a `session` cooki
 - A token that is unknown, expired, or revoked: 401 `UNAUTHENTICATED`, after a store read.
 - A write that sends a valid session cookie and no bearer token: 403 `FORBIDDEN`.
 - The store cannot do the credential check: 503 `STORE_BUSY` with `retry-after: 1`. A retry can succeed.
-- Region mismatch: a request with a token or session cookie gets 503 `STORE_BUSY` too, with `retry-after: 1`. Do not retry it. Fix the region first: check `TASKS_REGION` and the database location.
+- Region mismatch: a request with a well-formed bearer token or a session cookie gets 503 `STORE_BUSY` too, with `retry-after: 1`. Do not retry it. Fix the region first: check `TASKS_REGION` and the database location.
 
 The module also has these named exports:
 
@@ -317,7 +317,7 @@ export default createApp(
 
 `npx agentic-tasks` runs the CLI. `npx agentic-tasks mcp` serves the MCP tools over stdio.
 
-Both use the store file that `--file` names, then `AGENTIC_TASKS_FILE`, then `./agentic-tasks.json`. A relative path starts at the working directory: the shell for the CLI, or the directory where the MCP client starts the server. An MCP client config:
+Both use the store file that `--file` names, then `AGENTIC_TASKS_FILE`, then `./agentic-tasks.json`. A relative path starts at the current directory of the shell that runs the CLI, or at the directory where the MCP client starts the server. An MCP client config:
 
 ```json
 {
