@@ -196,8 +196,10 @@ describe.each(backends)("allocation on the %s store", (_name, rounds, open) => {
   }, 120_000);
 });
 
+// The file store has no case here. It runs the calls on one path one at a time,
+// so the gate could only time out and the test would prove nothing.
 describe("allocation with both writers held between read and write", () => {
-  it.each(["file", "memory"] as const)("gives two createTask calls on the %s store different positions", async (kind) => {
+  it.each(["memory"] as const)("gives two createTask calls on the %s store different positions", async (kind) => {
     const [, , open] = backends.find(([name]) => name === kind)!;
     const stores = await open();
     try {

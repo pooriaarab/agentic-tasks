@@ -1,14 +1,8 @@
-import { mkdtemp, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createFileStore } from "./file-store.js";
-
-// Wraps rename so one test can make the final step of a save fail.
-vi.mock("node:fs/promises", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:fs/promises")>();
-  return { ...actual, rename: vi.fn(actual.rename) };
-});
 
 describe("file store", () => {
   let dir: string;
@@ -20,67 +14,36 @@ describe("file store", () => {
   });
 
   afterEach(async () => {
-    vi.mocked(rename).mockClear();
     await rm(dir, { recursive: true, force: true });
   });
 
-  it("creates a missing parent directory on the first transaction", async () => {
+  it("creates a missing parent directory on the first write", async () => {
     const nested = join(dir, "nested", "deeper", "tasks.json");
     const store = createFileStore(nested);
     await store.put("boards", "board-1", { id: "board-1" });
     expect(await store.get("boards", "board-1")).toEqual({ id: "board-1" });
-    expect(JSON.parse(await readFile(nested, "utf8"))).toHaveProperty("tables.boards");
+    expect(JSON.parse(await readFile(nested, "utf8"))).toHaveProperty("collections.boards");
   });
 
-  it("removes the temp file and keeps the old state when rename fails", async () => {
-    const store = createFileStore(file);
-    await store.put("boards", "board-1", { id: "board-1" });
-    const before = await readFile(file, "utf8");
-
-    vi.mocked(rename).mockRejectedValueOnce(new Error("EXDEV: cross-device link"));
-    await expect(
-      store.put("boards", "board-2", { id: "board-2" }),
-    ).rejects.toThrow("EXDEV");
-
-    expect(await readFile(file, "utf8")).toBe(before);
-    expect(await readdir(dir)).toEqual(["tasks.json"]);
+  it("keeps the region it is given", () => {
+    expect(createFileStore(file, { region: "eu" }).region).toBe("eu");
   });
 
-  // A version that repeats lets a stale transaction pass its check, so these
-  // files are refused instead of read.
+  // The file format is not the format of earlier releases, and a file that is
+  // not a store file is never read as an empty store.
   it.each([
-    ["a clock behind a row version", { clock: 0, tables: { t: { x: { doc: {}, version: 1 } } } }],
-    ["a row with no version", { clock: 1, tables: { t: { x: { doc: {} } } } }],
-    ["a row version of 0", { clock: 1, tables: { t: { x: { doc: {}, version: 0 } } } }],
-    ["a fractional clock", { clock: 1.5, tables: {} }],
-    ["a row whose doc is not an object", { clock: 1, tables: { t: { x: { doc: 5, version: 1 } } } }],
-    ["a row whose doc is a list", { clock: 1, tables: { t: { x: { doc: [], version: 1 } } } }],
-    ["a table that is a number", { clock: 1, tables: { t: 5 } }],
-    ["a table that is null", { clock: 1, tables: { t: null } }],
-    ["a table that is a list", { clock: 1, tables: { t: [] } }],
-    ["null as the whole file", null],
-  ])("refuses a file with %s", async (_name, content) => {
+    ["an earlier release file", { clock: 1, tables: { t: { x: { doc: {}, version: 1 } } } }],
+    ["null", null],
+    ["a list", []],
+  ])("refuses %s", async (_name, content) => {
     await writeFile(file, JSON.stringify(content));
-    await expect(createFileStore(file).get("t", "x")).rejects.toThrow(/not an agentic-tasks store file/);
+    await expect(createFileStore(file).get("t", "x")).rejects.toThrow(/not an agentic-identity store file/);
+    expect(JSON.parse(await readFile(file, "utf8"))).toEqual(content);
   });
 
   it("refuses a file that is not JSON", async () => {
     await writeFile(file, "{ not json");
-    await expect(createFileStore(file).get("t", "x")).rejects.toThrow(/not an agentic-tasks store file/);
-  });
-
-  it("keeps the version from the first read of a doc, so a later read cannot hide a change", async () => {
-    const one = createFileStore(file);
-    const two = createFileStore(file);
-    await one.put("t", "a", { x: 1 });
-    let runs = 0;
-    await one.transaction(async (tx) => {
-      runs += 1;
-      await tx.get("t", "a");
-      if (runs === 1) await two.put("t", "a", { x: 2 });
-      await tx.get("t", "a");
-      await tx.put("t", "b", { x: 1 });
-    });
-    expect(runs).toBe(2);
+    await expect(createFileStore(file).get("t", "x")).rejects.toThrow(/not an agentic-identity store file/);
+    expect(await readFile(file, "utf8")).toBe("{ not json");
   });
 });

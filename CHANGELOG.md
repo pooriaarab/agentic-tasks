@@ -13,6 +13,7 @@ All notable changes to this package are in this file. The format follows
 
 ### Changed
 
+- The file store is now the `agentic-identity/file` adapter. The store file format changes, and the CLI refuses a file from an earlier release. Export the data with the earlier release, then import it again. A call that loses a race between two processes runs again on fresh data.
 - `agentic-tasks --version` prints the version and exits 0. `--help` prints the full usage and exits 0, at the top level, for each command, and for `mcp`.
 - `board` and `new` take the title as an argument or as `--title`. A command refuses an unknown flag or an extra argument with exit code 2, so `board new --title Sprint` no longer makes a board named "new".
 
