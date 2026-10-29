@@ -48,8 +48,8 @@ const COMMANDS: Record<string, CommandSpec> = {
   release: { args: "<task id>", summary: "Release a claim. The holder or a board owner can.", flags: [] },
   close: { args: "<task id>", summary: "Close a task. This clears its claim.", flags: [] },
   list: {
-    args: "",
-    summary: "List the tasks of the board given by --board.",
+    args: "<board id>",
+    summary: "List the tasks of a board. The board is the argument or --board.",
     flags: ["board", "column", "status"],
   },
   share: {
@@ -69,6 +69,25 @@ const COMMANDS: Record<string, CommandSpec> = {
   mcp: { args: "", summary: "Serve the MCP tools over stdio.", flags: [], principal: false },
 };
 
+// An argument that has a flag form. Any command with the argument takes the flag.
+const SLOT_FLAGS: Record<string, string> = {
+  "board id": "board",
+  "task id": "task",
+  title: "title",
+  name: "name",
+};
+
+function slotsOf(spec: CommandSpec): string[] {
+  return (spec.args.match(/[<[][^>\]]*[>\]]/g) ?? []).map((slot) => slot.slice(1, -1));
+}
+
+for (const spec of Object.values(COMMANDS)) {
+  for (const slot of slotsOf(spec)) {
+    const flag = SLOT_FLAGS[slot];
+    if (flag !== undefined && !spec.flags.includes(flag)) spec.flags.push(flag);
+  }
+}
+
 const COMMAND_WIDTH =
   Math.max(...Object.entries(COMMANDS).map(([name, spec]) => `${name} ${spec.args}`.trim().length)) + 2;
 
@@ -78,6 +97,7 @@ const USAGE = [
   "Every command but mcp needs --as and --kind. The kind is never defaulted.",
   "The store file is --file, or AGENTIC_TASKS_FILE, or ./agentic-tasks.json.",
   "Output is JSON.",
+  "<board id>, <task id>, <title>, and <name> can be given as --board, --task, --title, and --name.",
   "",
   "commands:",
   ...Object.entries(COMMANDS).map(
@@ -87,6 +107,14 @@ const USAGE = [
   "agentic-tasks <command> --help prints one command. agentic-tasks --version prints the version.",
 ].join("\n");
 
+// Names each argument that has a flag form, so help never promises one that is missing.
+function flagForms(spec: CommandSpec): string[] {
+  const pairs = slotsOf(spec)
+    .filter((slot) => slot in SLOT_FLAGS)
+    .map((slot) => `<${slot}> as --${SLOT_FLAGS[slot]}`);
+  return pairs.length === 0 ? [] : ["", `Flag forms: ${pairs.join(", ")}. Give each once.`];
+}
+
 function commandUsage(name: string, spec: CommandSpec): string {
   const principal = spec.principal === false ? "" : " --as <id> --kind <kind>";
   const flags = spec.flags.map((flag) => ` [--${flag} <value>]`).join("");
@@ -94,6 +122,7 @@ function commandUsage(name: string, spec: CommandSpec): string {
     `usage: agentic-tasks ${`${name} ${spec.args}`.trim()}${principal}${flags} [--file <path>]`,
     "",
     spec.summary,
+    ...flagForms(spec),
   ].join("\n");
 }
 
@@ -132,27 +161,45 @@ function checkArgs(args: ParsedArgs, spec: CommandSpec): void {
   for (const name of args.flags.keys()) {
     if (!known.has(name)) throw new UsageError(`unknown flag --${name}`);
   }
-  const slots = spec.args.match(/[<[][^>\]]*[>\]]/g)?.length ?? 0;
+  const slots = slotsOf(spec).length;
   if (args.positionals.length > slots) {
     throw new UsageError(`unexpected argument ${args.positionals[slots]}`);
   }
 }
 
-// A value that may come as an argument or as a flag, but not as both.
-function positionalOrFlag(
-  args: ParsedArgs,
-  index: number,
-  flag: string,
-  label: string,
-): string {
-  const given = args.positionals[index];
-  const named = one(args.flags, flag);
-  if (given !== undefined && named !== undefined) {
-    throw new UsageError(`give the ${label} once: as an argument or as --${flag}`);
+// Fills the arguments of a command in order. An argument with a flag form comes
+// from the flag when given, else from the next positional. It is never both: a
+// positional that repeats a flag's value, or is left over after a flag filled its
+// slot, is a second value for that argument.
+function bindArgs(args: ParsedArgs, spec: CommandSpec): Map<string, string> {
+  const bound = new Map<string, string>();
+  const flagged = new Map<string, string>();
+  let next = 0;
+  for (const slot of slotsOf(spec)) {
+    const flag = SLOT_FLAGS[slot];
+    const named = flag === undefined ? undefined : args.flags.get(flag);
+    if (named !== undefined) {
+      if (named.length > 1) throw new UsageError(`give --${flag} once`);
+      bound.set(slot, named[0] as string);
+      flagged.set(slot, named[0] as string);
+    } else if (args.positionals[next] !== undefined) {
+      bound.set(slot, args.positionals[next] as string);
+      next += 1;
+    }
   }
-  const value = given ?? named;
-  if (value === undefined) throw new UsageError(`missing ${label}`);
-  return value;
+  const twice = (slot: string): UsageError =>
+    new UsageError(`give the ${slot} once: as an argument or as --${SLOT_FLAGS[slot]}`);
+  for (const [slot, value] of flagged) {
+    if (args.positionals.includes(value)) throw twice(slot);
+  }
+  if (next < args.positionals.length) {
+    const given = [...flagged.keys()].map((slot) => `${slot} as --${SLOT_FLAGS[slot]}`);
+    throw new UsageError(
+      `unexpected argument ${args.positionals[next]}` +
+        (given.length === 0 ? "" : ` (already given: ${given.join(", ")})`),
+    );
+  }
+  return bound;
 }
 
 function one(flags: Map<string, string[]>, name: string): string | undefined {
@@ -184,27 +231,27 @@ function assignees(flags: Map<string, string[]>): Principal[] | undefined {
   });
 }
 
-function subjectFrom(flags: Map<string, string[]>, positionals: string[]): Subject {
+function subjectFrom(flags: Map<string, string[]>, id: string): Subject {
   const kind = one(flags, "subject-kind");
   if (kind === undefined) throw new UsageError("missing --subject-kind human|agent");
-  return { kind: kind as Subject["kind"], id: requirePositional(positionals, 1, "subject id") };
-}
-
-function requirePositional(positionals: string[], index: number, label: string): string {
-  const value = positionals[index];
-  if (value === undefined) throw new UsageError(`missing ${label}`);
-  return value;
+  return { kind: kind as Subject["kind"], id };
 }
 
 async function runCommand(
   tasks: Tasks,
   args: ParsedArgs,
 ): Promise<unknown> {
-  const { flags, positionals } = args;
+  const { flags } = args;
+  const bound = bindArgs(args, COMMANDS[args.command as string] as CommandSpec);
+  const need = (slot: string): string => {
+    const value = bound.get(slot);
+    if (value === undefined) throw new UsageError(`missing ${slot}`);
+    return value;
+  };
   switch (args.command) {
     case "board": {
       const board = await tasks.createBoard(
-        { title: positionalOrFlag(args, 0, "title", "title") },
+        { title: need("title") },
         actorFrom(flags),
       );
       let current = board;
@@ -215,15 +262,15 @@ async function runCommand(
     }
     case "column":
       return tasks.addColumn(
-        requirePositional(positionals, 0, "board id"),
-        positionalOrFlag(args, 1, "name", "column name"),
+        need("board id"),
+        need("name"),
         actorFrom(flags),
       );
     case "new":
       return tasks.createTask(
         {
-          boardId: requirePositional(positionals, 0, "board id"),
-          title: positionalOrFlag(args, 1, "title", "title"),
+          boardId: need("board id"),
+          title: need("title"),
           columnId: one(flags, "column"),
           description: one(flags, "description"),
           labels: many(flags, "label"),
@@ -233,10 +280,10 @@ async function runCommand(
         actorFrom(flags),
       );
     case "get":
-      return tasks.getTask(requirePositional(positionals, 0, "task id"), actorFrom(flags));
+      return tasks.getTask(need("task id"), actorFrom(flags));
     case "update":
       return tasks.updateTask(
-        requirePositional(positionals, 0, "task id"),
+        need("task id"),
         {
           title: one(flags, "title"),
           description: one(flags, "description"),
@@ -251,33 +298,31 @@ async function runCommand(
       if (columnId === undefined) throw new UsageError("move needs --column <id>");
       const position = one(flags, "position");
       return tasks.moveTask(
-        requirePositional(positionals, 0, "task id"),
+        need("task id"),
         { columnId, position: position === undefined ? undefined : Number(position) },
         actorFrom(flags),
       );
     }
     case "claim": {
       const ttl = one(flags, "ttl-ms");
-      return tasks.claim(requirePositional(positionals, 0, "task id"), actorFrom(flags), {
+      return tasks.claim(need("task id"), actorFrom(flags), {
         ttlMs: ttl === undefined ? undefined : Number(ttl),
       });
     }
     case "release":
-      return tasks.release(requirePositional(positionals, 0, "task id"), actorFrom(flags));
+      return tasks.release(need("task id"), actorFrom(flags));
     case "close":
-      return tasks.closeTask(requirePositional(positionals, 0, "task id"), actorFrom(flags));
+      return tasks.closeTask(need("task id"), actorFrom(flags));
     case "progress": {
-      const taskId = requirePositional(positionals, 0, "task id");
-      const note = positionals[1];
+      const taskId = need("task id");
+      const note = bound.get("note");
       if (note === undefined) return tasks.listProgress(taskId, actorFrom(flags));
       return tasks.progress(taskId, note, actorFrom(flags));
     }
     case "list": {
-      const boardId = one(flags, "board");
-      if (boardId === undefined) throw new UsageError("list needs --board <id>");
       return tasks.listTasks(
         {
-          boardId,
+          boardId: need("board id"),
           columnId: one(flags, "column"),
           status: one(flags, "status") as "open" | "closed" | undefined,
         },
@@ -286,28 +331,28 @@ async function runCommand(
     }
     case "share":
       await tasks.shareBoard(
-        requirePositional(positionals, 0, "board id"),
-        subjectFrom(flags, positionals),
-        requirePositional(positionals, 2, "role") as Role,
+        need("board id"),
+        subjectFrom(flags, need("subject id")),
+        need("role") as Role,
         actorFrom(flags),
       );
       return { shared: true };
     case "unshare":
       await tasks.unshareBoard(
-        requirePositional(positionals, 0, "board id"),
-        subjectFrom(flags, positionals),
+        need("board id"),
+        subjectFrom(flags, need("subject id")),
         actorFrom(flags),
       );
       return { unshared: true };
     case "delete":
-      await tasks.deleteTask(requirePositional(positionals, 0, "task id"), actorFrom(flags));
+      await tasks.deleteTask(need("task id"), actorFrom(flags));
       return { deleted: true };
     case "boards":
       return tasks.listBoards(actorFrom(flags));
     case "export":
       return tasks.exportData(actorFrom(flags));
     case "erase":
-      await tasks.eraseBoard(requirePositional(positionals, 0, "board id"), actorFrom(flags));
+      await tasks.eraseBoard(need("board id"), actorFrom(flags));
       return { erased: true };
     default:
       throw new UsageError(`unknown command ${args.command ?? ""}`.trim());

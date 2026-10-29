@@ -50,8 +50,11 @@ tasks boards --as ana --kind human
 tasks export --as ana --kind human
 ```
 
-`board` also takes the title as `--title Sprint`. A flag or argument that a command does
-not know fails with exit code 2. `tasks --help` lists the commands, `tasks <command> --help`
+A `<board id>`, `<task id>`, `<title>`, or `<name>` argument also has a flag form: `board --title Sprint`, `new --board <board id>
+--title "Write the spec"`, `list --board <board id>` (or `list <board id>`), `column --board
+<board id> --name Done`, and `get --task <task id>`. Every `<task id>` takes `--task` and every `<board id>` takes `--board`. The subject, role, and note of `share`, `unshare`, and `progress` are arguments only. Give a value as the argument or as the
+flag, not both. A word, flag, or missing value that a command does not accept fails with
+exit code 2 and a message that names it. `tasks --help` lists the commands, `tasks <command> --help`
 shows one command, and `tasks --version` prints the version. Use `--file <path>` or
 `AGENTIC_TASKS_FILE` to pick another store file.
 
