@@ -217,11 +217,9 @@ const tasks = createTasks({ store: createFileStore("./agentic-tasks.json") });
 const ana = trustedContext("ana", "human"); // no check: local code only
 
 const board = await tasks.createBoard({ title: "Sprint" }, ana);
-const withColumns = await tasks.addColumn(board.id, "Todo", ana);
-const task = await tasks.createTask(
-  { boardId: board.id, title: "Write the spec", columnId: withColumns.columns[0].id },
-  ana,
-);
+await tasks.addColumn(board.id, "Todo", ana);
+const task = await tasks.createTask({ boardId: board.id, title: "Write the spec" }, ana); // first column
+await tasks.getTask(task.id, ana); // read a task before you claim it
 await tasks.claim(task.id, ana, { ttlMs: 600_000 });
 ```
 
@@ -282,7 +280,7 @@ The module also has these named exports:
 - `tasksOnD1(env)` and `authOnD1(env)` are the default store and credential check on `DB`.
 - `localTestAuth` and `isLoopbackRequest` are the loopback test auth.
 
-To use another store or credential check, call `createApp` yourself:
+To use another store or credential check, call `createApp` yourself. It still needs the `DB` binding and a valid `TASKS_REGION`. Without them it answers 503 before it calls your store:
 
 ```ts
 import { createApp } from "agentic-tasks/worker";
