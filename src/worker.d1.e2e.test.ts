@@ -63,6 +63,9 @@ describe("two Worker instances on one D1 database", () => {
   async function openTask(): Promise<string> {
     const board = (await call(PORT_ONE, "POST", "/boards", ALICE, { title: "Sprint" })).body!;
     await call(PORT_ONE, "POST", `/boards/${board.id}/columns`, ALICE, { name: "Todo" });
+    for (const bot of ["bot-1", ...Array.from({ length: 8 }, (_, i) => `bot-${i}`)]) {
+      await call(PORT_ONE, "PUT", `/boards/${board.id}/members/${bot}`, ALICE, { role: "editor" });
+    }
     return (await call(PORT_ONE, "POST", "/tasks", ALICE, { boardId: board.id, title: "Write spec" })).body!.id;
   }
 
@@ -72,7 +75,7 @@ describe("two Worker instances on one D1 database", () => {
     const refused = await call(PORT_TWO, "POST", `/tasks/${id}/claim`, BOT, { ttlMs: 600_000 });
     expect(refused.status).toBe(409);
     expect(refused.body?.error.code).toBe("CLAIM_HELD");
-    expect((await call(PORT_TWO, "GET", `/tasks/${id}`, {})).body?.claim.holder.id).toBe("alice");
+    expect((await call(PORT_TWO, "GET", `/tasks/${id}`, ALICE)).body?.claim.holder.id).toBe("alice");
   });
 
   // Five rounds, because one round can pass by luck when the guard is missing.
@@ -89,7 +92,7 @@ describe("two Worker instances on one D1 database", () => {
       const winners = bots.filter((_, i) => replies[i]!.status === 200);
       expect(winners).toHaveLength(1);
       expect(replies.filter((r) => r.status === 409)).toHaveLength(7);
-      const held = (await call(PORT_TWO, "GET", `/tasks/${id}`, {})).body!;
+      const held = (await call(PORT_TWO, "GET", `/tasks/${id}`, ALICE)).body!;
       expect(held.claim.holder.id).toBe(winners[0]!["x-principal-id"]);
     }
   }, 120_000);
@@ -100,12 +103,12 @@ describe("two Worker instances on one D1 database", () => {
     await call(PORT_TWO, "POST", `/tasks/${id}/progress`, BOT, { note: "outline done" });
     await Promise.all([stopWorker(one), stopWorker(two)]);
     await startBoth();
-    const task = (await call(PORT_TWO, "GET", `/tasks/${id}`, {})).body!;
+    const task = (await call(PORT_TWO, "GET", `/tasks/${id}`, ALICE)).body!;
     expect(task.title).toBe("Write spec");
     expect(task.claim.holder.id).toBe("alice");
     const refused = await call(PORT_ONE, "POST", `/tasks/${id}/claim`, BOT, { ttlMs: 600_000 });
     expect(refused.body?.error.code).toBe("CLAIM_HELD");
-    expect((await call(PORT_ONE, "GET", `/tasks/${id}/progress`, {})).body).toMatchObject([{ note: "outline done" }]);
+    expect((await call(PORT_ONE, "GET", `/tasks/${id}/progress`, ALICE)).body).toMatchObject([{ note: "outline done" }]);
   }, 180_000);
 });
 

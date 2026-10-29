@@ -48,6 +48,7 @@ describe("agentic-tasks CLI (built binary)", () => {
     const board = JSON.parse(
       run(["board", "Sprint", "--columns", "Todo,Doing", ...ALICE]).stdout,
     ) as { id: string; columns: { id: string }[] };
+    run(["share", board.id, "bot-1", "editor", ...ALICE]);
     return { boardId: board.id, columnId: board.columns[0]!.id };
   }
 
@@ -75,7 +76,7 @@ describe("agentic-tasks CLI (built binary)", () => {
     expect(created.code).toBe(0);
     const task = JSON.parse(created.stdout) as { id: string; columnId: string };
     expect(task.columnId).toBe(columnId);
-    const listed = JSON.parse(run(["list", "--board", boardId]).stdout) as { id: string }[];
+    const listed = JSON.parse(run(["list", "--board", boardId, ...ALICE]).stdout) as { id: string }[];
     expect(listed.map((row) => row.id)).toEqual([task.id]);
   });
 
@@ -118,7 +119,7 @@ describe("agentic-tasks CLI (built binary)", () => {
       id: string;
     };
     expect(run(["progress", id, "outline done", ...BOT]).code).toBe(0);
-    const entries = JSON.parse(run(["progress", id]).stdout) as {
+    const entries = JSON.parse(run(["progress", id, ...ALICE]).stdout) as {
       note: string;
       by: { kind: string };
     }[];
@@ -144,7 +145,7 @@ describe("agentic-tasks CLI (built binary)", () => {
     const refused = run(["new", boardId, "Write spec", "--as", "bot-1"]);
     expect(refused.code).toBe(2);
     expect(refused.stderr).toMatch(/--kind/);
-    expect(JSON.parse(run(["list", "--board", boardId]).stdout)).toEqual([]);
+    expect(JSON.parse(run(["list", "--board", boardId, ...ALICE]).stdout)).toEqual([]);
   });
 
   it("rejects an unknown principal kind with INVALID_INPUT", () => {
@@ -157,10 +158,35 @@ describe("agentic-tasks CLI (built binary)", () => {
   it("answers NOT_FOUND for an id that names an object prototype member", () => {
     makeBoard();
     for (const id of ["__proto__", "constructor"]) {
-      const result = run(["get", id]);
+      const result = run(["get", id, ...ALICE]);
       expect(result.code).toBe(1);
       expect(errorCodeOf(result)).toBe("NOT_FOUND");
     }
+  });
+
+  it("refuses a principal that has no role on the board", () => {
+    const board = JSON.parse(run(["board", "Sprint", "--columns", "Todo", ...ALICE]).stdout) as { id: string };
+    const refused = run(["new", board.id, "Write spec", ...BOT]);
+    expect(refused.code).toBe(1);
+    expect(errorCodeOf(refused)).toBe("FORBIDDEN");
+  });
+
+  it("shares a board by role and takes the role away on unshare", () => {
+    const board = JSON.parse(run(["board", "Sprint", "--columns", "Todo", ...ALICE]).stdout) as { id: string };
+    expect(run(["share", board.id, "bot-1", "viewer", ...ALICE]).code).toBe(0);
+    expect(run(["list", "--board", board.id, ...BOT]).code).toBe(0);
+    expect(errorCodeOf(run(["new", board.id, "Write spec", ...BOT]))).toBe("FORBIDDEN");
+    expect(run(["share", board.id, "bot-1", "editor", ...ALICE]).code).toBe(0);
+    expect(run(["new", board.id, "Write spec", ...BOT]).code).toBe(0);
+    expect(errorCodeOf(run(["share", board.id, "x", "viewer", ...BOT]))).toBe("FORBIDDEN");
+    expect(run(["unshare", board.id, "bot-1", ...ALICE]).code).toBe(0);
+    expect(errorCodeOf(run(["list", "--board", board.id, ...BOT]))).toBe("FORBIDDEN");
+  });
+
+  it("needs --board to list", () => {
+    const result = run(["list", ...ALICE]);
+    expect(result.code).toBe(2);
+    expect(result.stderr).toMatch(/--board/);
   });
 
   it("exits 2 with a usage message on an unknown command", () => {
@@ -205,6 +231,7 @@ describe("agentic-tasks lock file (built binary)", () => {
     const board = JSON.parse(
       run(["board", "Sprint", "--columns", "Todo", ...ALICE]).stdout,
     ) as { id: string; columns: { id: string }[] };
+    run(["share", board.id, "bot-1", "editor", ...ALICE]);
     const task = JSON.parse(run(["new", board.id, "Write spec", ...ALICE]).stdout) as {
       id: string;
     };
@@ -303,6 +330,8 @@ describe("agentic-tasks MCP server over stdio (built binary)", () => {
       "release_task",
       "add_progress",
       "list_progress",
+      "share_board",
+      "unshare_board",
     ]) {
       expect(names).toContain(expected);
     }
@@ -327,6 +356,14 @@ describe("agentic-tasks MCP server over stdio (built binary)", () => {
       ),
     ) as { id: string };
 
+    const shared = await call("share_board", {
+      boardId: board.id,
+      subjectId: "bot-1",
+      role: "editor",
+      principal: { id: "alice", kind: "human" },
+    });
+    expect(shared.isError).toBeFalsy();
+
     const first = await call("claim_task", {
       taskId: task.id,
       principal: { id: "bot-1", kind: "agent_of_human" },
@@ -339,6 +376,18 @@ describe("agentic-tasks MCP server over stdio (built binary)", () => {
     });
     expect(second.isError).toBe(true);
     expect(textOf(second)).toContain("CLAIM_HELD");
+  });
+
+  it("reports a principal with no role as FORBIDDEN", async () => {
+    const board = JSON.parse(
+      textOf(await call("create_board", { title: "Sprint", principal: { id: "alice", kind: "human" } })),
+    ) as { id: string };
+    const result = await call("list_tasks", {
+      boardId: board.id,
+      principal: { id: "bot-1", kind: "agent_of_human" },
+    });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain("FORBIDDEN");
   });
 
   it("reports an unknown principal kind as an error result", async () => {

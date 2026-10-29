@@ -1,13 +1,17 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import type { Role } from "agentic-identity";
 import { TaskError, type Principal } from "./model.js";
+import { trustedContext } from "./principal.js";
 import type { Tasks } from "./tasks.js";
 import { VERSION } from "./version.js";
 
-// Every call names its actor. Kinds are checked by the service, so a bad
-// kind comes back as an INVALID_INPUT error result.
+// Every call names its principal. Kinds are checked by the service, so a bad
+// kind comes back as an INVALID_INPUT error result. The server trusts the name,
+// as the CLI does. The board role of that principal still decides the result.
 const actor = z.object({ id: z.string(), kind: z.string() });
+const ctx = (p: { id: string; kind: string }) => trustedContext(p.id, p.kind);
 const assignee = z.object({ id: z.string(), kind: z.string() });
 
 async function respond(work: () => Promise<unknown>) {
@@ -32,7 +36,7 @@ export function createMcpServer(tasks: Tasks): McpServer {
     "Create a board. Add columns with add_column.",
     { title: z.string(), principal: actor },
     async ({ title, principal }) =>
-      respond(() => tasks.createBoard({ title }, principal as Principal)),
+      respond(() => tasks.createBoard({ title }, ctx(principal))),
   );
 
   server.tool(
@@ -40,7 +44,7 @@ export function createMcpServer(tasks: Tasks): McpServer {
     "Append a named column to a board.",
     { boardId: z.string(), name: z.string(), principal: actor },
     async ({ boardId, name, principal }) =>
-      respond(() => tasks.addColumn(boardId, name, principal as Principal)),
+      respond(() => tasks.addColumn(boardId, name, ctx(principal))),
   );
 
   server.tool(
@@ -60,7 +64,7 @@ export function createMcpServer(tasks: Tasks): McpServer {
       respond(() =>
         tasks.createTask(
           { ...input, assignees: assignees as Principal[] | undefined },
-          principal as Principal,
+          ctx(principal),
         ),
       ),
   );
@@ -68,19 +72,20 @@ export function createMcpServer(tasks: Tasks): McpServer {
   server.tool(
     "get_task",
     "Read one task.",
-    { taskId: z.string() },
-    async ({ taskId }) => respond(() => tasks.getTask(taskId)),
+    { taskId: z.string(), principal: actor },
+    async ({ taskId, principal }) => respond(() => tasks.getTask(taskId, ctx(principal))),
   );
 
   server.tool(
     "list_tasks",
-    "List tasks, optionally filtered by board, column, or status.",
+    "List the tasks of a board, optionally filtered by column or status.",
     {
-      boardId: z.string().optional(),
+      boardId: z.string(),
       columnId: z.string().optional(),
       status: z.enum(["open", "closed"]).optional(),
+      principal: actor,
     },
-    async (filter) => respond(() => tasks.listTasks(filter)),
+    async ({ principal, ...filter }) => respond(() => tasks.listTasks(filter, ctx(principal))),
   );
 
   server.tool(
@@ -94,7 +99,7 @@ export function createMcpServer(tasks: Tasks): McpServer {
     },
     async ({ taskId, columnId, position, principal }) =>
       respond(() =>
-        tasks.moveTask(taskId, { columnId, position }, principal as Principal),
+        tasks.moveTask(taskId, { columnId, position }, ctx(principal)),
       ),
   );
 
@@ -115,7 +120,7 @@ export function createMcpServer(tasks: Tasks): McpServer {
         tasks.updateTask(
           taskId,
           { ...patch, assignees: assignees as Principal[] | undefined },
-          principal as Principal,
+          ctx(principal),
         ),
       ),
   );
@@ -125,7 +130,7 @@ export function createMcpServer(tasks: Tasks): McpServer {
     "Close a task. Closing clears its claim.",
     { taskId: z.string(), principal: actor },
     async ({ taskId, principal }) =>
-      respond(() => tasks.closeTask(taskId, principal as Principal)),
+      respond(() => tasks.closeTask(taskId, ctx(principal))),
   );
 
   server.tool(
@@ -138,7 +143,7 @@ export function createMcpServer(tasks: Tasks): McpServer {
     },
     async ({ taskId, ttlMs, principal }) =>
       respond(() =>
-        tasks.claim(taskId, principal as Principal, { ttlMs }),
+        tasks.claim(taskId, ctx(principal), { ttlMs }),
       ),
   );
 
@@ -147,7 +152,7 @@ export function createMcpServer(tasks: Tasks): McpServer {
     "Release a claim. Only the holder can release it.",
     { taskId: z.string(), principal: actor },
     async ({ taskId, principal }) =>
-      respond(() => tasks.release(taskId, principal as Principal)),
+      respond(() => tasks.release(taskId, ctx(principal))),
   );
 
   server.tool(
@@ -155,14 +160,41 @@ export function createMcpServer(tasks: Tasks): McpServer {
     "Append a progress note to a task.",
     { taskId: z.string(), note: z.string(), principal: actor },
     async ({ taskId, note, principal }) =>
-      respond(() => tasks.progress(taskId, note, principal as Principal)),
+      respond(() => tasks.progress(taskId, note, ctx(principal))),
   );
 
   server.tool(
     "list_progress",
     "Read the progress notes on a task, oldest first.",
-    { taskId: z.string() },
-    async ({ taskId }) => respond(() => tasks.listProgress(taskId)),
+    { taskId: z.string(), principal: actor },
+    async ({ taskId, principal }) => respond(() => tasks.listProgress(taskId, ctx(principal))),
+  );
+
+  server.tool(
+    "share_board",
+    "Give a principal a role on a board: viewer, commenter, editor, or owner. Needs the owner role.",
+    {
+      boardId: z.string(),
+      subjectId: z.string(),
+      role: z.enum(["viewer", "commenter", "editor", "owner"]),
+      principal: actor,
+    },
+    async ({ boardId, subjectId, role, principal }) =>
+      respond(async () => {
+        await tasks.shareBoard(boardId, subjectId, role as Role, ctx(principal));
+        return { shared: true };
+      }),
+  );
+
+  server.tool(
+    "unshare_board",
+    "Remove a principal's role on a board. Needs the owner role. The last owner stays.",
+    { boardId: z.string(), subjectId: z.string(), principal: actor },
+    async ({ boardId, subjectId, principal }) =>
+      respond(async () => {
+        await tasks.unshareBoard(boardId, subjectId, ctx(principal));
+        return { unshared: true };
+      }),
   );
 
   return server;

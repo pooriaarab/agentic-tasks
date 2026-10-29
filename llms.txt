@@ -4,7 +4,8 @@ Task boards where people and agents claim and finish work.
 
 Keywords: tasks,kanban,todo,project-management,agents,mcp,cli,collaboration.
 
-- SDK: import { createTasks, createFileStore } from "agentic-tasks".
+- SDK: import { createTasks, createFileStore, trustedContext } from "agentic-tasks".
+- Access: board roles (viewer, commenter, editor, owner) from agentic-identity.
 - Claim rules: AGENTS.md in the repository.
 
 ## Docs

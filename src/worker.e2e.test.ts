@@ -25,7 +25,7 @@ interface Reply {
 async function call(
   method: string,
   path: string,
-  headers: Record<string, string> = {},
+  headers: Record<string, string> = ALICE,
   body?: unknown,
 ): Promise<Reply> {
   const response = await fetch(`${BASE}${path}`, {
@@ -58,6 +58,7 @@ async function openTask(): Promise<{ boardId: string; columnId: string; taskId: 
     await call("POST", `/boards/${board.id}/columns`, ALICE, { name: "Todo" })
   ).body as { columns: { id: string }[] };
   const columnId = withColumn.columns[0]!.id;
+  await call("PUT", `/boards/${board.id}/members/bot-1`, ALICE, { role: "editor" });
   const task = (
     await call("POST", "/tasks", ALICE, { boardId: board.id, title: "Write spec" })
   ).body as { id: string };
@@ -107,10 +108,39 @@ describe("agentic-tasks Worker over wrangler dev", () => {
     expect(reply.status).toBe(404);
   });
 
-  it("refuses a write without principal headers with 400 INVALID_INPUT", async () => {
-    const reply = await call("POST", "/boards", {}, { title: "Sprint" });
+  it("refuses a request without principal headers with 401 UNAUTHENTICATED", async () => {
+    for (const [method, path] of [["POST", "/boards"], ["GET", "/tasks"], ["GET", "/boards/x"]] as const) {
+      const reply = await call(method, path, {}, method === "POST" ? { title: "Sprint" } : undefined);
+      expect(reply.status).toBe(401);
+      expect(errorCodeOf(reply)).toBe("UNAUTHENTICATED");
+    }
+  });
+
+  it("refuses a principal kind that is not known with 400 INVALID_INPUT", async () => {
+    const reply = await call("POST", "/boards", { "x-principal-id": "x", "x-principal-kind": "root" }, { title: "Sprint" });
     expect(reply.status).toBe(400);
     expect(errorCodeOf(reply)).toBe("INVALID_INPUT");
+  });
+
+  it("refuses a principal with no role on the board with 403 FORBIDDEN", async () => {
+    const { boardId, taskId } = await openTask();
+    const stranger = { "x-principal-id": "eve", "x-principal-kind": "human" };
+    for (const [method, path] of [["GET", `/boards/${boardId}`], ["GET", `/tasks/${taskId}`], ["GET", `/tasks?boardId=${boardId}`]] as const) {
+      const reply = await call(method, path, stranger);
+      expect(reply.status).toBe(403);
+      expect(errorCodeOf(reply)).toBe("FORBIDDEN");
+    }
+    expect((await call("POST", `/tasks/${taskId}/claim`, stranger, {})).status).toBe(403);
+  });
+
+  it("shares a board by role over HTTP and takes the role away", async () => {
+    const { boardId, taskId } = await openTask();
+    const carol = { "x-principal-id": "carol", "x-principal-kind": "human" };
+    expect((await call("PUT", `/boards/${boardId}/members/carol`, ALICE, { role: "viewer" })).status).toBe(200);
+    expect((await call("GET", `/tasks/${taskId}`, carol)).status).toBe(200);
+    expect(errorCodeOf(await call("POST", `/tasks/${taskId}/claim`, carol, {}))).toBe("FORBIDDEN");
+    expect((await call("DELETE", `/boards/${boardId}/members/carol`, ALICE)).status).toBe(200);
+    expect((await call("GET", `/tasks/${taskId}`, carol)).status).toBe(403);
   });
 
   it("refuses a body that is not JSON with 400 INVALID_INPUT", async () => {

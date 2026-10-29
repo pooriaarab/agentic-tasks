@@ -69,6 +69,7 @@ export interface ProgressEntry {
 
 export type TaskErrorCode =
   | "NOT_FOUND"
+  | "FORBIDDEN"
   | "INVALID_INPUT"
   | "CLAIM_HELD"
   | "NOT_HOLDER"

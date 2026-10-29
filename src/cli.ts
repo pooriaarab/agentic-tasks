@@ -1,12 +1,14 @@
 #!/usr/bin/env node
+import type { PrincipalContext, Role } from "agentic-identity";
+import { trustedContext } from "./principal.js";
 import { TaskError, type Principal, type PrincipalKind } from "./model.js";
 import { createFileStore } from "./file-store.js";
 import { createTasks, type Tasks } from "./tasks.js";
 import { serveMcp } from "./mcp.js";
 
 const USAGE =
-  "usage: agentic-tasks <board|column|new|get|update|move|claim|progress|release|close|list|mcp> " +
-  "[args] [--as <id> --kind <kind>] [--file <path>]";
+  "usage: agentic-tasks <board|column|new|get|update|move|claim|progress|release|close|list|share|unshare|mcp> " +
+  "[args] --as <id> --kind <kind> [--file <path>]";
 
 class UsageError extends Error {}
 
@@ -44,14 +46,16 @@ function many(flags: Map<string, string[]>, name: string): string[] {
   return flags.get(name) ?? [];
 }
 
-// Every write names its actor and kind. The kind is never defaulted, so an
-// agent's write cannot be recorded as a person's.
-function actorFrom(flags: Map<string, string[]>): Principal {
+// Every command names its principal and kind. The kind is never defaulted, so
+// an agent's write cannot be recorded as a person's. The CLI trusts these flags,
+// as git trusts user.name: anyone who can open the file can name any principal.
+// The board role of that principal still decides what the command may do.
+function actorFrom(flags: Map<string, string[]>): PrincipalContext {
   const id = one(flags, "as");
   if (id === undefined) throw new UsageError("this command needs --as <id>");
   const kind = one(flags, "kind");
   if (kind === undefined) throw new UsageError("this command needs --kind <kind>");
-  return { id, kind: kind as PrincipalKind };
+  return trustedContext(id, kind);
 }
 
 function assignees(flags: Map<string, string[]>): Principal[] | undefined {
@@ -106,7 +110,7 @@ async function runCommand(
         actorFrom(flags),
       );
     case "get":
-      return tasks.getTask(requirePositional(positionals, 0, "task id"));
+      return tasks.getTask(requirePositional(positionals, 0, "task id"), actorFrom(flags));
     case "update":
       return tasks.updateTask(
         requirePositional(positionals, 0, "task id"),
@@ -142,15 +146,36 @@ async function runCommand(
     case "progress": {
       const taskId = requirePositional(positionals, 0, "task id");
       const note = positionals[1];
-      if (note === undefined) return tasks.listProgress(taskId);
+      if (note === undefined) return tasks.listProgress(taskId, actorFrom(flags));
       return tasks.progress(taskId, note, actorFrom(flags));
     }
-    case "list":
-      return tasks.listTasks({
-        boardId: one(flags, "board"),
-        columnId: one(flags, "column"),
-        status: one(flags, "status") as "open" | "closed" | undefined,
-      });
+    case "list": {
+      const boardId = one(flags, "board");
+      if (boardId === undefined) throw new UsageError("list needs --board <id>");
+      return tasks.listTasks(
+        {
+          boardId,
+          columnId: one(flags, "column"),
+          status: one(flags, "status") as "open" | "closed" | undefined,
+        },
+        actorFrom(flags),
+      );
+    }
+    case "share":
+      await tasks.shareBoard(
+        requirePositional(positionals, 0, "board id"),
+        requirePositional(positionals, 1, "subject id"),
+        requirePositional(positionals, 2, "role") as Role,
+        actorFrom(flags),
+      );
+      return { shared: true };
+    case "unshare":
+      await tasks.unshareBoard(
+        requirePositional(positionals, 0, "board id"),
+        requirePositional(positionals, 1, "subject id"),
+        actorFrom(flags),
+      );
+      return { unshared: true };
     default:
       throw new UsageError(`unknown command ${args.command ?? ""}`.trim());
   }
