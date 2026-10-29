@@ -6,6 +6,10 @@ All notable changes to this package are in this file. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `tasksAccount`: `exportAccount` and `eraseAccount` for a host that runs account export and erase across packages. They return plain JSON by collection and counts by collection, so the host does not read the board layout.
+
 ## [0.8.0] - 2026-10-29
 
 ### Added
