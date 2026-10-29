@@ -200,7 +200,7 @@ The package has these entries. The build writes each one to `dist/`.
 | `agentic-tasks/worker` | The HTTP API as a Hono app for a Cloudflare Worker. | [Worker](#worker) |
 | `agentic-tasks/ui` | `mount`, which renders the task UI in your page, and its option types. | [Mount the UI](#mount-the-ui-in-your-app) |
 | `agentic-tasks/ui.css` | The styles for `agentic-tasks/ui`. | [Mount the UI](#mount-the-ui-in-your-app) |
-| `npx agentic-tasks` (bin) | The CLI. `agentic-tasks mcp` serves the MCP tools. | [CLI and MCP](#cli-and-mcp) |
+| `agentic-tasks` (bin, `dist/cli.js`) | The CLI. `agentic-tasks mcp` serves the MCP tools. | [CLI and MCP](#cli-and-mcp) |
 
 There is no `agentic-tasks/mcp` entry. Start the MCP server with `npx agentic-tasks mcp`.
 
@@ -223,7 +223,8 @@ await tasks.getTask(task.id, ana); // read a task before you claim it
 await tasks.claim(task.id, ana, { ttlMs: 600_000 });
 ```
 
-- `createTasks({ store, now? })` returns the `Tasks` methods. `store` is any `Store` from `agentic-identity` that passes its contract suite. `createFileStore(path)` is the JSON file adapter.
+- `createTasks({ store, now? })` returns the `Tasks` methods. `store` is any `Store` from `agentic-identity` that passes its contract suite.
+- `createFileStore(path)` is the JSON file adapter.
 - `tasksAccount` has `exportAccount` and `eraseAccount`, for a host that runs account export and erase. See [Lifecycle](#lifecycle).
 - A refused call throws `TaskError`. Its `code` is one of `NOT_FOUND`, `FORBIDDEN`, `INVALID_INPUT`, `CLAIM_HELD`, `NOT_HOLDER`, or `TASK_CLOSED`.
 - `PRINCIPAL_KINDS` lists the kinds: `human`, `agent_of_human`, `agent_of_agent`, `agent`, and `user_token`. `VERSION` is the package version.
@@ -266,13 +267,13 @@ Create the database in the EU with `npx wrangler d1 create agentic-tasks --locat
 | Binding or variable | Needed | What it does |
 |---|---|---|
 | `DB` | Yes | The D1 database. Without it every route except `/health` answers 503 `STORE_NOT_CONFIGURED`. |
-| `TASKS_REGION` | Yes | `eu` or `us`, where the database lives. You set it. The Worker does not detect it. Without a valid value every route except `/health` answers 503 `REGION_NOT_CONFIGURED`. The store refuses a query that D1 serves outside this region. |
+| `TASKS_REGION` | Yes | `eu` or `us`, where the database lives. You set it. The Worker does not detect it. Without a valid value every route except `/health` answers 503 `REGION_NOT_CONFIGURED`. The store refuses a query that D1 serves outside this region, and a query that D1 does not report a region for. |
 | `TASKS_UNSAFE_LOCAL_TEST_AUTH` | No | `1` trusts the `X-Principal-Id` and `X-Principal-Kind` headers, on loopback requests only. Use it only for local dev and tests. A request that is not on loopback gets 403 `LOCAL_TEST_AUTH_NOT_LOOPBACK`. |
 | `TASKS_UNSAFE_LOCAL_REGION` | No | `1` lets `TASKS_REGION` be `unknown`, because local D1 reports no region. Local dev only. |
 
 Without test auth, the default export reads a bearer credential from the same D1 database.
 Run the `agentic-identity` Worker on that database to issue credentials. A request
-with no valid credential answers 401 `UNAUTHENTICATED`.
+with no valid credential answers 401 `UNAUTHENTICATED`. If the credential check cannot reach the store, the request answers 503 `STORE_BUSY`. Try again.
 
 The module also has these named exports:
 
