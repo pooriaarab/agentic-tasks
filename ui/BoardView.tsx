@@ -127,7 +127,7 @@ export function BoardView({ client, session, boardId, onLoaded }: {
             const here = shown.filter((t) => t.columnId === c.id);
             return (
               <section key={c.id} className="column" aria-labelledby={`col-${c.id}`}>
-                <h3 id={`col-${c.id}`}>{c.name} ({here.length})</h3>
+                <h2 id={`col-${c.id}`}>{c.name} ({here.length})</h2>
                 <ul className="cards" aria-labelledby={`col-${c.id}`}>
                   {here.map((t) => <Card key={t.id} task={t} onOpen={() => setEditing(t)} />)}
                 </ul>

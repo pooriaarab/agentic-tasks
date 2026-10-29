@@ -16,6 +16,10 @@ All notable changes to this package are in this file. The format follows
 - `agentic-tasks --version` prints the version and exits 0. `--help` prints the full usage and exits 0, at the top level, for each command, and for `mcp`.
 - `board` and `new` take the title as an argument or as `--title`. A command refuses an unknown flag or an extra argument with exit code 2, so `board new --title Sprint` no longer makes a board named "new".
 
+### Fixed
+
+- The embedded board (`agentic-tasks/ui`) passes axe WCAG 2.2 AA on a host page. Column headings are `h2`, so they follow the board's `h1` with no skipped level. The "Back to lists" button has no button face, so its link color keeps its contrast in dark mode, and it is 24px tall.
+
 ## [0.6.0] - 2026-10-29
 
 ### Added
