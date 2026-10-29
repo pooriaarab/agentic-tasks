@@ -206,7 +206,9 @@ There is no `agentic-tasks/mcp` entry. Start the MCP server with `npx agentic-ta
 
 ### Library
 
-The library reads no environment variables. Give it a store. Every `Tasks` method takes a principal context from `agentic-identity`. `trustedContext(id, kind)` makes one from a principal id and a kind. `trustedContext` does not check the id or the kind. Use it only in local code that you control.
+The library reads no environment variables. Give it a store.
+
+Every `Tasks` method takes a principal context from `agentic-identity`. `trustedContext(id, kind)` makes one from a principal id and a kind. It does not check the id or the kind. Use it only in local code that you control.
 
 ```ts
 import { createFileStore, createTasks, trustedContext } from "agentic-tasks";
@@ -270,17 +272,17 @@ The package does not ship the schema. Set up the database in this order:
 | Binding or variable | Needed | What it does |
 |---|---|---|
 | `DB` | Yes | The D1 database. Without it every route under `/api/v1/tasks` except `health` answers 503 `STORE_NOT_CONFIGURED`. |
-| `TASKS_REGION` | Yes | `eu` or `us`, where the database lives. You set it. The Worker does not detect it. Without a valid value, every route under `/api/v1/tasks` except `health` answers 503 `REGION_NOT_CONFIGURED`. See the region notes below. |
+| `TASKS_REGION` | Yes | `eu` or `us`, where the database lives. You set it. The Worker does not detect it. Without a valid value, every route under `/api/v1/tasks` except `health` answers 503 `REGION_NOT_CONFIGURED`. |
 | `TASKS_UNSAFE_LOCAL_TEST_AUTH` | No | `1` trusts the `X-Principal-Id` and `X-Principal-Kind` headers, on loopback requests only. Use it only for local dev and tests. A request that is not on loopback gets 403 `LOCAL_TEST_AUTH_NOT_LOOPBACK`. |
 | `TASKS_UNSAFE_LOCAL_REGION` | No | `1` lets `TASKS_REGION` be `unknown`, because local D1 reports no region. Local dev only. |
 
-Without test auth, the default export reads a bearer credential from the same D1 database. Run the `agentic-identity` Worker on that database to issue credentials. The responses are:
+Without test auth, the default export reads a bearer token, or a `session` cookie, from the same D1 database. Run the `agentic-identity` Worker on that database to issue credentials. The responses are:
 
 - No credential, or a malformed `Authorization` header: 401 `UNAUTHENTICATED`. The Worker does not read the store.
 - A token that is unknown, expired, or revoked: 401 `UNAUTHENTICATED`, after a store read.
 - A write that sends a valid session cookie and no bearer token: 403 `FORBIDDEN`.
 - The store cannot do the credential check: 503 `STORE_BUSY` with `retry-after: 1`. A retry can succeed.
-- Region mismatch: a request with a token gets 503 `STORE_BUSY` too. A retry does not help. Check `TASKS_REGION` and the database location.
+- Region mismatch: a request with a token or session cookie gets 503 `STORE_BUSY` too. A retry does not help. Check `TASKS_REGION` and the database location.
 
 The module also has these named exports:
 
