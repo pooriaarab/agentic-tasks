@@ -1,31 +1,31 @@
-import { useState, type FormEvent } from "react";
-import { Button, Dialog, DialogClose, Input, PresenceChip, Select, Textarea } from "agentic-design/react";
+import { useState, type FormEvent, type KeyboardEvent } from "react";
+import { Button, CloseIcon, IconButton, Input, PresenceChip, Select, Textarea } from "agentic-design/react";
 import { PRINCIPAL_KINDS, type Principal, type PrincipalKind } from "../src/model.js";
 import type { Board, Task, TasksClient } from "../src/client.js";
 import { nameOf, personOf } from "./people.js";
 import { AgentMark, claimIsLive } from "./BoardView.js";
 import { describe, type Session } from "./session.js";
 
-export function TaskDialog({ client, session, board, task, onClose, onSaved, onChanged }: {
+export function TaskPanel({ client, session, board, task, onClose, onChanged }: {
   client: TasksClient;
   session: Session;
   board: Board;
-  task?: Task;
+  task: Task;
   onClose: () => void;
-  onSaved: () => void;
   onChanged: (task: Task) => void;
 }) {
-  const [title, setTitle] = useState(task?.title ?? "");
-  const [description, setDescription] = useState(task?.description ?? "");
-  const [labels, setLabels] = useState(task?.labels.join(", ") ?? "");
-  const [dueDate, setDueDate] = useState(task?.dueDate ?? "");
-  const [columnId, setColumnId] = useState(task?.columnId ?? board.columns[0]?.id ?? "");
-  const [assignees, setAssignees] = useState<Principal[]>(task?.assignees ?? []);
+  const [title, setTitle] = useState(task.title);
+  const [description, setDescription] = useState(task.description);
+  const [labels, setLabels] = useState(task.labels.join(", "));
+  const [dueDate, setDueDate] = useState(task.dueDate ?? "");
+  const [columnId, setColumnId] = useState(task.columnId);
+  const [assignees, setAssignees] = useState<Principal[]>(task.assignees);
   const [assigneeId, setAssigneeId] = useState("");
   const [assigneeKind, setAssigneeKind] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
-  const closed = task?.status === "closed";
+  const [saved, setSaved] = useState(false);
+  const closed = task.status === "closed";
 
   const run = async (action: () => Promise<void>) => {
     setBusy(true);
@@ -55,32 +55,18 @@ export function TaskDialog({ client, session, board, task, onClose, onSaved, onC
     if (title.trim() === "") return setError("Enter a title.");
     const labelList = labels.split(",").map((l) => l.trim()).filter(Boolean);
     return run(async () => {
-      if (task === undefined) {
-        await client.createTask({
-          boardId: board.id, title: title.trim(), description, columnId, labels: labelList,
-          dueDate: dueDate === "" ? null : dueDate, assignees,
-        });
-      } else {
-        await client.updateTask(task.id, {
-          title: title.trim(), description, labels: labelList,
-          dueDate: dueDate === "" ? null : dueDate, assignees,
-        });
-        if (columnId !== task.columnId) {
-          try {
-            await client.moveTask(task.id, { columnId });
-          } catch (err) {
-            // The edit is saved. Show it behind the dialog, then show the refusal.
-            onChanged(await client.getTask(task.id).catch(() => task));
-            throw err;
-          }
-        }
-      }
-      onSaved();
+      let next = await client.updateTask(task.id, {
+        title: title.trim(), description, labels: labelList,
+        dueDate: dueDate === "" ? null : dueDate, assignees,
+      });
+      onChanged(next);
+      if (columnId !== task.columnId) next = await client.moveTask(task.id, { columnId });
+      onChanged(next);
+      setSaved(true);
     });
   };
-  // Read the task before each call, and again after a refusal, so the dialog shows the real claim.
+  // Read the task before each call, and again after a refusal, so the panel shows the real claim.
   const act = (call: (id: string) => Promise<Task>) =>
-    task &&
     run(async () => {
       try {
         await client.getTask(task.id);
@@ -91,30 +77,24 @@ export function TaskDialog({ client, session, board, task, onClose, onSaved, onC
       }
     });
 
-  const live = task !== undefined && claimIsLive(task);
+  const live = claimIsLive(task);
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "Escape" && !e.defaultPrevented) onClose();
+  };
   return (
-    <Dialog
-      open
-      onOpenChange={(o) => !o && onClose()}
-      title={task === undefined ? "New task" : "Edit task"}
-      description={task === undefined ? `Add a task to ${board.title}.` : undefined}
-      footer={
-        <>
-          <DialogClose asChild><Button variant="secondary">Cancel</Button></DialogClose>
-          <Button type="submit" form="task-form" loading={busy}>{task === undefined ? "Create task" : "Save task"}</Button>
-        </>
-      }
-    >
-      <form id="task-form" className="dialog-form" onSubmit={save} noValidate>
+    <aside className="panel" aria-label="Task details" onKeyDown={onKeyDown}>
+      <header className="panel-head">
+        <h2 className="panel-title">Task</h2>
+        <IconButton label="Hide details" icon={<CloseIcon aria-hidden="true" />} variant="ghost" onClick={onClose} />
+      </header>
+      <form id="task-form" className="panel-form" onSubmit={save} onChange={() => setSaved(false)} noValidate>
         {error && <p className="banner" role="alert">{error}</p>}
-        {task && (
-          <p className="meta">
-            <AgentMark task={task} />{" "}
-            Created by <PresenceChip entry={personOf(task.createdBy)} />, last changed by{" "}
-            <PresenceChip entry={personOf(task.updatedBy)} />.
-          </p>
-        )}
-        <Input label="Title" autoFocus value={title} onChange={(e) => setTitle(e.target.value)} />
+        <input className="bare-input title-input" aria-label="Title" autoFocus value={title} onChange={(e) => setTitle(e.target.value)} />
+        <p className="meta">
+          <AgentMark task={task} />{" "}
+          Created by <PresenceChip entry={personOf(task.createdBy)} />, last changed by{" "}
+          <PresenceChip entry={personOf(task.updatedBy)} />.
+        </p>
         <Textarea label="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
         <Input label="Labels" hint="Separate labels with commas." value={labels} onChange={(e) => setLabels(e.target.value)} />
         <Input label="Due date" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
@@ -143,24 +123,26 @@ export function TaskDialog({ client, session, board, task, onClose, onSaved, onC
             <Button variant="secondary" onClick={() => addAssignee(session.id, session.kind)}>Assign to me</Button>
           </div>
         </fieldset>
-        {task && (
-          <fieldset className="stack">
-            <legend>Claim</legend>
-            <p className="meta" role="status">
-              {closed ? "This task is closed." : live && task.claim
-                ? `Claimed by ${nameOf(task.claim.holder.id)} until ${
-                  Number.isNaN(Date.parse(task.claim.expiresAt)) ? "an unknown time" : new Date(task.claim.expiresAt).toLocaleString()
-                }.`
-                : "No live claim."}
-            </p>
-            <div className="row">
-              <Button variant="secondary" disabled={closed} onClick={() => void act((id) => client.claim(id))}>Claim</Button>
-              <Button variant="secondary" disabled={closed || task.claim === undefined} onClick={() => void act((id) => client.release(id))}>Release</Button>
-              <Button variant="danger" disabled={closed} onClick={() => void act((id) => client.closeTask(id))}>Close task</Button>
-            </div>
-          </fieldset>
-        )}
+        <fieldset className="stack">
+          <legend>Claim</legend>
+          <p className="meta" role="status">
+            {closed ? "This task is closed." : live && task.claim
+              ? `Claimed by ${nameOf(task.claim.holder.id)} until ${
+                Number.isNaN(Date.parse(task.claim.expiresAt)) ? "an unknown time" : new Date(task.claim.expiresAt).toLocaleString()
+              }.`
+              : "No live claim."}
+          </p>
+          <div className="row">
+            <Button variant="secondary" disabled={closed} onClick={() => void act((id) => client.claim(id))}>Claim</Button>
+            <Button variant="secondary" disabled={closed || task.claim === undefined} onClick={() => void act((id) => client.release(id))}>Release</Button>
+            <Button variant="danger" disabled={closed} onClick={() => void act((id) => client.closeTask(id))}>Close task</Button>
+          </div>
+        </fieldset>
       </form>
-    </Dialog>
+      <footer className="panel-foot">
+        <p className="meta" role="status">{saved ? "Saved." : ""}</p>
+        <Button type="submit" form="task-form" loading={busy}>Save task</Button>
+      </footer>
+    </aside>
   );
 }

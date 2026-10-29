@@ -19,16 +19,18 @@ async function createList(page: Page, title: string) {
   await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
 }
 
-async function addTask(page: Page, title: string) {
-  await page.getByRole("button", { name: "New task" }).first().click();
-  await page.getByLabel("Title").fill(title);
-  await page.getByRole("button", { name: "Create task" }).click();
-  await expect(page.getByRole("button", { name: new RegExp(title) })).toBeVisible();
+// A task card is the button that opens it. Its actions menu button has a longer name.
+const card = (page: Page, title: string) => page.locator("button.card-main", { hasText: title });
+
+async function addTask(page: Page, title: string, column = "To do") {
+  await page.getByLabel(`Add a task to ${column}`).fill(title);
+  await page.keyboard.press("Enter");
+  await expect(card(page, title)).toBeVisible();
 }
 
 const as = (id: string, kind: string): Promise<APIRequestContext> =>
   request.newContext({
-    baseURL: "http://127.0.0.1:18743",
+    baseURL: `http://127.0.0.1:${process.env.E2E_PORT ?? 18743}`,
     extraHTTPHeaders: { "x-principal-id": id, "x-principal-kind": kind },
   });
 
@@ -42,7 +44,7 @@ test("create a list, add a task, claim it, close it, and reload", async ({ page 
   await expect(page.getByText("No tasks yet")).toBeVisible();
 
   await addTask(page, "Write the docs");
-  await page.getByRole("button", { name: /Write the docs/ }).click();
+  await card(page, "Write the docs").click();
   await page.getByRole("button", { name: "Claim", exact: true }).click();
   await expect(page.getByText(`Claimed by ${me} until`)).toBeVisible();
   await page.getByRole("button", { name: "Close task" }).click();
@@ -50,13 +52,12 @@ test("create a list, add a task, claim it, close it, and reload", async ({ page 
   await page.keyboard.press("Escape");
 
   await page.reload();
-  const card = page.getByRole("button", { name: /Write the docs/ });
-  await expect(card).toContainText("Closed");
+  await expect(card(page, "Write the docs")).toContainText("Closed");
   await page.getByLabel("Status").selectOption("open");
   await expect(page.getByText("No task matches the filters")).toBeVisible();
 });
 
-test("a keyboard alone creates a task and focus is visible", async ({ page }) => {
+test("a keyboard alone adds, renames, moves, and opens a task, and focus is visible", async ({ page }) => {
   await connect(page, `kay-${unique()}`);
   await createList(page, "Keys");
   const newTask = page.getByRole("button", { name: "New task" }).first();
@@ -64,17 +65,63 @@ test("a keyboard alone creates a task and focus is visible", async ({ page }) =>
   const outline = await newTask.evaluate((el) => getComputedStyle(el).outlineWidth);
   expect(parseFloat(outline)).toBeGreaterThan(0);
   await page.keyboard.press("Enter");
-  await expect(page.getByLabel("Title")).toBeFocused();
+  await expect(page.getByLabel("Add a task to To do")).toBeFocused();
   await page.keyboard.type("Typed task");
   await page.keyboard.press("Enter");
-  const card = page.getByRole("button", { name: /Typed task/ });
-  await expect(card).toBeVisible();
-  await card.focus();
-  expect(parseFloat(await card.evaluate((el) => getComputedStyle(el).outlineWidth))).toBeGreaterThan(0);
+  const typed = card(page, "Typed task");
+  await expect(typed).toBeVisible();
+  await typed.focus();
+  // The focus ring sits on the whole card.
+  expect(parseFloat(await typed.evaluate((el) => getComputedStyle(el.parentElement!).outlineWidth))).toBeGreaterThan(0);
+
+  await page.keyboard.press("F2");
+  await page.keyboard.press("ControlOrMeta+a");
+  await page.keyboard.type("Renamed task");
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("dialog", { name: "Edit task" })).toBeVisible();
+  await expect(card(page, "Renamed task")).toBeFocused();
+
+  // Alt+ArrowRight moves the card to the next column, with no pointer.
+  await page.keyboard.press("Alt+ArrowRight");
+  await expect(page.getByRole("region", { name: /Doing/ }).locator("button.card-main", { hasText: "Renamed task" })).toBeVisible();
+
+  await card(page, "Renamed task").focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("complementary", { name: "Task details" })).toBeVisible();
+  await expect(page.getByLabel("Title")).toBeFocused();
   await page.keyboard.press("Escape");
-  await expect(card).toBeFocused();
+  await expect(page.getByRole("complementary")).toHaveCount(0);
+  await expect(card(page, "Renamed task")).toBeFocused();
+});
+
+test("drag a card to another column, and move it from the card menu", async ({ page }) => {
+  await connect(page, `dan-${unique()}`);
+  await createList(page, "Drag");
+  await addTask(page, "Dragged");
+  const doing = page.getByRole("region", { name: /Doing/ });
+  await card(page, "Dragged").dragTo(doing);
+  await expect(doing.locator("button.card-main", { hasText: "Dragged" })).toBeVisible();
+
+  // The menu is the single-pointer alternative to dragging (WCAG 2.2, 2.5.7).
+  await page.getByRole("button", { name: "Actions for Dragged" }).click();
+  await page.getByRole("menuitem", { name: "Move to Done" }).click();
+  await expect(page.getByRole("region", { name: /Done/ }).locator("button.card-main", { hasText: "Dragged" })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("region", { name: /Done/ }).locator("button.card-main", { hasText: "Dragged" })).toBeVisible();
+});
+
+test("a card shows due date and assignee chips, and an empty column says so", async ({ page }) => {
+  const me = `chi-${unique()}`;
+  await connect(page, me);
+  await createList(page, "Chips");
+  await addTask(page, "Chipped");
+  await expect(page.getByText("Nothing here yet.")).toHaveCount(2);
+  await card(page, "Chipped").click();
+  await page.getByLabel("Due date").fill("2020-01-02");
+  await page.getByRole("button", { name: "Assign to me" }).click();
+  await page.getByRole("button", { name: "Save task" }).click();
+  await expect(page.getByText("Saved.")).toBeVisible();
+  await expect(card(page, "Chipped")).toContainText("Late, due 2020-01-02");
+  await expect(card(page, "Chipped")).toContainText(`Assigned to ${me}`);
 });
 
 test("edit and assign a task, and filter", async ({ page }) => {
@@ -83,16 +130,17 @@ test("edit and assign a task, and filter", async ({ page }) => {
   await createList(page, "Edits");
   await addTask(page, "First");
   await addTask(page, "Second");
-  await page.getByRole("button", { name: /First/ }).click();
+  await card(page, "First").click();
   await page.getByLabel("Labels").fill("urgent, docs");
   await page.getByRole("button", { name: "Assign to me" }).click();
-  await page.getByRole("dialog").getByLabel("Column").selectOption({ label: "Doing" });
+  await page.getByRole("complementary").getByLabel("Column").selectOption({ label: "Doing" });
   await page.getByRole("button", { name: "Save task" }).click();
-  await expect(page.getByRole("button", { name: /First/ })).toContainText(`assigned to ${me}`);
+  await page.keyboard.press("Escape");
+  await expect(card(page, "First")).toContainText(`Assigned to ${me}`);
   await page.getByLabel("Search").fill("urgent");
-  await expect(page.getByRole("button", { name: /Second/ })).toHaveCount(0);
+  await expect(card(page, "Second")).toHaveCount(0);
   await page.getByRole("tab", { name: "List" }).click();
-  await expect(page.getByRole("button", { name: /First/ })).toContainText("Doing");
+  await expect(card(page, "First")).toContainText("Doing");
 });
 
 test("an agent change is marked, and a refused claim shows its code", async ({ page }) => {
@@ -111,12 +159,12 @@ test("an agent change is marked, and a refused claim shows its code", async ({ p
   await bot.patch(`${API}/tasks/${mine.id}`, { data: { description: "Rewritten by the bot" } });
 
   await page.reload();
-  const card = page.getByRole("button", { name: /Bot task/ });
-  await expect(card).toContainText("Agent created");
-  await expect(page.getByRole("button", { name: /Human task/ })).toContainText("Last changed by an agent");
+  const bots = card(page, "Bot task");
+  await expect(bots).toContainText("Agent created");
+  await expect(card(page, "Human task")).toContainText("Last changed by an agent");
   await page.getByLabel("Created or last changed by an agent").check();
-  await expect(card).toBeVisible();
-  await card.click();
+  await expect(bots).toBeVisible();
+  await bots.click();
   await page.getByRole("button", { name: "Claim", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("CLAIM_HELD");
   await page.keyboard.press("Escape");
@@ -154,19 +202,15 @@ for (const scheme of ["light", "dark"] as const) {
     await check("lists-empty");
     await createList(page, "Launch plan");
     await check("board-empty");
-    await page.getByRole("button", { name: "New task" }).first().click();
-    await expect(page.getByRole("dialog", { name: "New task" })).toBeVisible();
-    await check("new-task-dialog");
-    await page.keyboard.press("Escape");
     const boardId = boardIdOf(page);
     await addTask(page, "Draft the announcement");
     const bot = await as("writer", "agent");
     const human = await as(me, "human");
     await human.put(`${API}/boards/${boardId}/members/agent/writer`, { data: { role: "editor" } });
     const board = await (await human.get(`${API}/boards/${boardId}`)).json();
-    await bot.post(`${API}/tasks`, { data: { boardId, title: "Check the links", labels: ["docs"], columnId: board.columns[1].id } });
+    await bot.post(`${API}/tasks`, { data: { boardId, title: "Check the links", labels: ["docs"], dueDate: "2099-12-01", assignees: [{ id: me, kind: "human" }], columnId: board.columns[1].id } });
     await page.reload();
-    await expect(page.getByRole("button", { name: /Check the links/ })).toBeVisible();
+    await expect(card(page, "Check the links")).toBeVisible();
     await check("board");
     await page.getByRole("tab", { name: "List" }).click();
     await check("list");
@@ -175,9 +219,9 @@ for (const scheme of ["light", "dark"] as const) {
     await check("lists");
     await page.getByRole("link", { name: "Launch plan" }).last().click();
     await page.getByRole("tab", { name: "List" }).click();
-    await page.getByRole("button", { name: /Check the links/ }).click();
-    await expect(page.getByRole("dialog")).toBeVisible();
-    await check("task-dialog");
+    await card(page, "Check the links").click();
+    await expect(page.getByRole("complementary", { name: "Task details" })).toBeVisible();
+    await check("task-panel");
     await page.keyboard.press("Escape");
     await page.getByLabel("Search").fill("zzz");
     await check("no-match");
@@ -186,3 +230,20 @@ for (const scheme of ["light", "dark"] as const) {
     await check("error");
   });
 }
+
+test("at 390px wide the board content and the panel fit", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 800 });
+  await connect(page, `sml-${unique()}`);
+  await createList(page, "Small");
+  await addTask(page, "A task with a rather long title that must wrap inside its card");
+  await card(page, "A task").click();
+  const panel = page.getByRole("complementary", { name: "Task details" });
+  await expect(panel).toBeVisible();
+  const box = await panel.boundingBox();
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(390);
+  await page.keyboard.press("Escape");
+  // The columns scroll inside their own box. The shell top bar belongs to the design package.
+  const wide = await page.evaluate(() => [...document.querySelectorAll("body *")].filter((e) => !e.closest(".columns, .agd-shell__actions") && e.getBoundingClientRect().right > 391).map((e) => e.className || e.tagName).slice(0, 8));
+  expect(wide).toEqual([]);
+});
