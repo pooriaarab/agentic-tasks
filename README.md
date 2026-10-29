@@ -213,7 +213,11 @@ token field.
 What it does:
 
 - Create a list. The UI adds the columns To do, Doing, and Done.
-- Create, edit, assign, claim, release, and close a task.
+- Add a task with the quick add field at the foot of a column: type a title, press Enter.
+- Drag a card to another column. Without a pointer, press Alt and the left or right arrow on a card,
+  or use the card menu: "Move to" a column. Press F2 on a card, or use "Rename" in the card menu, to rename it in place.
+- Open a card to edit it in the side panel: description, labels, due date, column, assignees, and claim.
+  A card shows the due date, the assignees, and the claim as small chips. A late due date has its own tone.
 - Show tasks as a board or a list. Filter by text, status, and column, or show
   only tasks that an agent created or last changed.
 - Mark each task that an agent created, or that an agent changed last. The mark is words and an icon.
@@ -221,7 +225,9 @@ What it does:
 
 It works with a keyboard, shows a focus ring, and follows the system light or
 dark theme or your pick. An axe check for WCAG 2.2 AA runs on each view in both
-themes. Screenshots are in `docs/screenshots`.
+themes. Screenshots are in `docs/screenshots`. The screenshots from before the 0.11.0 redesign are in
+`docs/screenshots/before`. The calm look follows the `agentic-design` 0.5 tokens, which take their style from
+[Tiny Little Office](https://tinylittleoffice.com) (MIT). No code is copied.
 
 Run the browser tests. They start `wrangler dev` on port 18743:
 
@@ -233,6 +239,7 @@ SCREENSHOTS=1 npm run test:e2e   # writes docs/screenshots
 
 The UI limits:
 
+- A drop puts the card at the end of the target column. The UI does not reorder cards inside a column.
 - The API has no call that lists lists. The UI remembers the lists that this
   browser opened. Open another list by its id.
 - The session (id, kind, token) stays in `sessionStorage` until the tab closes.

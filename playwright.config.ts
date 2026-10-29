@@ -1,6 +1,6 @@
 import { defineConfig } from "@playwright/test";
 
-const PORT = 18743;
+const PORT = Number(process.env.E2E_PORT ?? 18743);
 const WRANGLER = "node node_modules/wrangler/bin/wrangler.js";
 
 // Runs the real Worker under wrangler dev on a fresh local D1 database. The test

@@ -69,10 +69,9 @@ for (const scheme of ["light", "dark"] as const) {
     await open(page);
     await page.getByLabel("New list name").fill(`Axe ${scheme}`);
     await page.getByRole("button", { name: "Create list" }).click();
-    await page.getByRole("button", { name: "New task" }).first().click();
-    await page.getByRole("dialog").getByLabel("Title").fill("Write the plan");
-    await page.getByRole("dialog").getByRole("button", { name: "Create task" }).click();
-    await expect(page.getByRole("button", { name: /Write the plan/ })).toBeVisible();
+    await page.getByLabel("Add a task to To do").fill("Write the plan");
+    await page.keyboard.press("Enter");
+    await expect(page.locator("button.card-main", { hasText: "Write the plan" })).toBeVisible();
     // Heading order is a best practice in axe, not a WCAG tag. Host pages check it, so it is on here too.
     const { violations } = await new AxeBuilder({ page })
       .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])

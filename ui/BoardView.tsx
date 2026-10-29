@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { BotIcon, Button, Checkbox, EmptyState, Input, PlusIcon, Select, Tabs } from "agentic-design/react";
+import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
+import { BotIcon, Button, Checkbox, EmptyState, IconButton, Input, Menu, MoreIcon, PlusIcon, Select, Tabs } from "agentic-design/react";
 import type { Board, Task } from "../src/client.js";
 import type { TasksClient } from "../src/client.js";
 import { nameOf as personName } from "./people.js";
-import { TaskDialog } from "./TaskDialog.js";
+import { TaskPanel } from "./TaskPanel.js";
 import { describe, type Session } from "./session.js";
 
 // A claim is live until its expiry. An expiry that does not parse counts as live.
@@ -32,23 +32,142 @@ export function AgentMark({ task }: { task: Task }) {
   );
 }
 
-function Card({ task, columnName, onOpen }: { task: Task; columnName?: string; onOpen: () => void }) {
+// A drag carries this type, so a dropped file, link, or text never moves a card.
+const TASK_TYPE = "application/x-agentic-task";
+
+const today = () => {
+  const d = new Date();
+  const two = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`;
+};
+
+// Due date and assignees show as quiet chips. A date before today on an open task reads as late.
+function Chips({ task }: { task: Task }) {
+  const late = task.dueDate != null && task.status !== "closed" && task.dueDate < today();
+  const held = claimIsLive(task) && task.claim;
+  if (!task.dueDate && task.assignees.length === 0 && !held && task.status !== "closed" && task.labels.length === 0) return null;
   return (
-    <li>
-      <button type="button" className="card" onClick={onOpen}>
-        <span className="card-title">{task.title}</span>
-        <AgentMark task={task} />
-        <span className="meta">
-          {task.status === "closed" ? "Closed" : "Open"}
-          {columnName ? ` · ${columnName}` : ""}
-          {task.dueDate ? ` · due ${task.dueDate}` : ""}
-          {claimIsLive(task) && task.claim ? ` · claimed by ${personName(task.claim.holder.id)}` : ""}
-          {task.assignees.length > 0 ? ` · assigned to ${task.assignees.map((a) => personName(a.id)).join(", ")}` : ""}
+    <span className="chips">
+      {task.status === "closed" && <span className="chip">Closed</span>}
+      {task.dueDate && <span className={late ? "chip chip-late" : "chip"}>{late ? "Late, due " : "Due "}{task.dueDate}</span>}
+      {held && task.claim && <span className="chip">Claimed by {personName(task.claim.holder.id)}</span>}
+      {task.assignees.map((a) => (
+        <span key={`${a.kind}:${a.id}`} className="chip">
+          {isAgent(a) && <BotIcon aria-hidden="true" focusable="false" />}
+          Assigned to {personName(a.id)}
+          {isAgent(a) && <span className="sr-only"> ({a.kind})</span>}
         </span>
-        {task.labels.length > 0 && <span className="meta">Labels: {task.labels.join(", ")}</span>}
-      </button>
+      ))}
+      {task.labels.map((l) => <span key={l} className="chip chip-label">{l}</span>)}
+    </span>
+  );
+}
+
+// Mounts afresh for each rename, so each rename starts from the current title and ends once.
+function RenameForm({ title, onDone }: { title: string; onDone: (title: string | null, restoreFocus: boolean) => void }) {
+  const [draft, setDraft] = useState(title);
+  const settled = useRef(false);
+  // Enter, Escape, and blur each end the edit. Only the first counts.
+  // Enter and Escape give the focus back to the card. A blur means the person chose another place.
+  const finish = (value: string | null, restoreFocus = true) => {
+    if (settled.current) return;
+    settled.current = true;
+    onDone(value, restoreFocus);
+  };
+  return (
+    <form className="card-edit" onSubmit={(e) => { e.preventDefault(); finish(draft); }}>
+      <input className="bare-input" aria-label={`Title of ${title}`} autoFocus value={draft} onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); finish(null); } }}
+        onBlur={() => { if (document.hasFocus()) finish(draft, false); }} />
+    </form>
+  );
+}
+
+function Card({ task, columns, columnName, renaming, onOpen, onMove, onRename, onRenameDone, onDragStart, onDragEnd }: {
+  task: Task;
+  columns: Board["columns"];
+  columnName?: string;
+  renaming: boolean;
+  onOpen: () => void;
+  onMove: (columnId: string) => void;
+  onRename: () => void;
+  onRenameDone: (title: string | null, restoreFocus: boolean) => void;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+}) {
+  // Keyboard alternative to dragging: Alt+Arrow moves the card to the next or previous column.
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "F2") return onRename();
+    const step = e.altKey ? (e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0) : 0;
+    if (step === 0) return;
+    e.preventDefault();
+    const to = columns[columns.findIndex((c) => c.id === task.columnId) + step];
+    if (to) onMove(to.id);
+  };
+  const others = columns.filter((c) => c.id !== task.columnId);
+  return (
+    <li className="card" draggable={!renaming} onDragStart={(e: DragEvent) => { e.dataTransfer.setData(TASK_TYPE, task.id); onDragStart(); }}
+    onDragEnd={onDragEnd}>
+      {renaming ? (
+        <RenameForm title={task.title} onDone={onRenameDone} />
+      ) : (
+        <>
+          <button type="button" className="card-main" data-task-id={task.id} onClick={onOpen} onKeyDown={onKeyDown}
+            title="Press F2 to rename. Press Alt and an arrow key to move.">
+            <span className="card-title">{task.title}</span>
+            <AgentMark task={task} />
+            {columnName && <span className="meta">{columnName}</span>}
+            <Chips task={task} />
+          </button>
+          <Menu
+            align="end"
+            trigger={<IconButton label={`Actions for ${task.title}`} icon={<MoreIcon aria-hidden="true" />} size="sm" variant="ghost" />}
+            items={[
+              { label: "Rename", onSelect: onRename, shortcut: "F2" },
+              ...(others.length > 0 ? ["separator" as const] : []),
+              ...others.map((c) => ({ label: `Move to ${c.name}`, onSelect: () => onMove(c.id) })),
+            ]}
+          />
+        </>
+      )}
     </li>
   );
+}
+
+// A quick add field at the foot of a column: type a title, press Enter.
+function QuickAdd({ column, onAdd }: { column: { id: string; name: string }; onAdd: (title: string) => Promise<boolean> }) {
+  const [title, setTitle] = useState("");
+  const busy = useRef(false);
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    const text = title.trim();
+    if (text === "" || busy.current) return;
+    busy.current = true;
+    try {
+      if (await onAdd(text)) setTitle((t) => (t.trim() === text ? "" : t));
+    } finally {
+      busy.current = false;
+    }
+  };
+  return (
+    <form className="quick-add" onSubmit={submit} noValidate>
+      <input className="bare-input" aria-label={`Add a task to ${column.name}`} placeholder="+ Add a task" data-quick-add value={title}
+        onChange={(e) => setTitle(e.target.value)} />
+    </form>
+  );
+}
+
+// True below the width where the task panel covers the board.
+function useNarrow(): boolean {
+  const query = "(max-width: 56rem)";
+  const [narrow, setNarrow] = useState(() => matchMedia(query).matches);
+  useEffect(() => {
+    const m = matchMedia(query);
+    const on = () => setNarrow(m.matches);
+    m.addEventListener("change", on);
+    return () => m.removeEventListener("change", on);
+  }, []);
+  return narrow;
 }
 
 type Load = { board: Board; tasks: Task[] } | { error: string } | null;
@@ -65,17 +184,47 @@ export function BoardView({ client, session, boardId, onLoaded }: {
   const [columnId, setColumnId] = useState("");
   const [text, setText] = useState("");
   const [agentOnly, setAgentOnly] = useState(false);
-  const [editing, setEditing] = useState<Task | "new" | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [over, setOver] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string>();
+  const [announce, setAnnounce] = useState("");
+  const narrow = useNarrow();
   const [columnName, setColumnName] = useState("");
   const [columnError, setColumnError] = useState<string>();
 
+  const [focusReq, setFocusReq] = useState<{ id: string; onlyIfIdle: boolean } | null>(null);
+  const unsaved = useRef(false);
+  // If a filter now hides the card, the focus goes to the first quick add field, or the chosen tab.
+  useEffect(() => {
+    if (focusReq === null) return;
+    setFocusReq(null);
+    const card = document.querySelector<HTMLElement>(`[data-task-id="${focusReq.id}"]`);
+    // After a slow move, leave the focus alone if the person has gone to another control.
+    const at = document.activeElement;
+    if (focusReq.onlyIfIdle && at !== null && at !== document.body && !card?.parentElement?.contains(at)) return;
+    (card ?? document.querySelector<HTMLElement>("[data-quick-add]") ?? document.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]'))?.focus();
+  }, [focusReq, state]);
+  const moving = useRef(new Set<string>());
+  // If a reload no longer has the open task, close the panel and say so.
+  useEffect(() => {
+    if (editingId === null || state === null || !("tasks" in state) || state.tasks.some((t) => t.id === editingId)) return;
+    setEditingId(null);
+    unsaved.current = false;
+    setNotice("The task you had open is no longer on this list.");
+    setFocusReq({ id: editingId, onlyIfIdle: false });
+  }, [editingId, state]);
+  const latest = useRef(0);
   const load = useCallback(async () => {
+    const mine = ++latest.current;
     try {
       const [board, tasks] = await Promise.all([client.getBoard(boardId), client.listTasks({ boardId })]);
+      if (mine !== latest.current) return; // A newer load is on its way, so drop this old answer.
       setState({ board, tasks });
       onLoaded(board);
     } catch (err) {
-      setState({ error: describe(err) });
+      if (mine === latest.current) setState({ error: describe(err) });
     }
   }, [client, boardId, onLoaded]);
   useEffect(() => void load(), [client, boardId]);
@@ -91,6 +240,7 @@ export function BoardView({ client, session, boardId, onLoaded }: {
     );
   }
   const { board, tasks } = state;
+  const editing = tasks.find((t) => t.id === editingId);
   const needle = text.trim().toLowerCase();
   const shown = tasks.filter(
     (t) =>
@@ -103,14 +253,81 @@ export function BoardView({ client, session, boardId, onLoaded }: {
   const filtered = status !== "" || columnId !== "" || needle !== "" || agentOnly;
   const clear = () => { setStatus(""); setColumnId(""); setText(""); setAgentOnly(false); };
 
+  const attempt = async (action: () => Promise<unknown>) => {
+    setNotice(undefined);
+    let ok = true;
+    try {
+      await action();
+    } catch (err) {
+      ok = false;
+      setNotice(describe(err));
+    }
+    await load();
+    return ok;
+  };
+  // A filter would hide the new task at once, so a quick add clears the filters.
+  const quickAdd = (columnId: string) => (title: string) => {
+    if (filtered) clear();
+    return attempt(() => client.createTask({ boardId: board.id, title, columnId }));
+  };
+  // The focus moves in an effect, after React has drawn the new columns, never before.
+  const focusCard = (id: string, onlyIfIdle = false) => setFocusReq({ id, onlyIfIdle });
+  // A move remounts the card in its new column, so give the focus back and say where it went.
+  const move = (task: Task, to: string) => {
+    // A second move of the same card waits for the first, so two quick key presses do not both start here.
+    if (task.columnId === to || moving.current.has(task.id)) return;
+    moving.current.add(task.id);
+    setAnnounce("");
+    void attempt(() => client.moveTask(task.id, { columnId: to })).then((ok) => {
+      moving.current.delete(task.id);
+      if (ok) setAnnounce(`Moved ${task.title} to ${nameOf(to)}.`);
+      focusCard(task.id, true);
+    });
+  };
+  const rename = (task: Task, title: string | null, restoreFocus: boolean) => {
+    setRenaming(null);
+    const next = title?.trim();
+    if (next && next !== task.title) void attempt(() => client.updateTask(task.id, { title: next }));
+    if (restoreFocus) focusCard(task.id);
+  };
+  const close = () => {
+    unsaved.current = false;
+    const id = editingId;
+    setEditingId(null);
+    if (id) focusCard(id);
+  };
+  const drop = (e: DragEvent, columnId: string) => {
+    e.preventDefault();
+    setOver(null);
+    const task = tasks.find((t) => t.id === e.dataTransfer.getData(TASK_TYPE));
+    setDragging(null);
+    if (task) move(task, columnId);
+  };
+  const open = (id: string) => {
+    if (unsaved.current && id !== editingId) return setNotice("The open task has unsaved changes. Save it, or hide its details first.");
+    setNotice(undefined);
+    setEditingId(id);
+  };
+  const card = (t: Task, columnName?: string) => (
+    <Card key={t.id} task={t} columns={board.columns} columnName={columnName} renaming={renaming === t.id}
+      onOpen={() => open(t.id)} onMove={(to) => move(t, to)} onRename={() => setRenaming(t.id)}
+      onRenameDone={(title, restore) => rename(t, title, restore)} onDragStart={() => setDragging(t.id)} onDragEnd={() => { setDragging(null); setOver(null); }} />
+  );
+  // The quick add fields live in the board tab. Show it, with no filter hiding it, then focus the first.
+  const newTask = () => {
+    setView("board");
+    if (shown.length === 0) clear();
+    requestAnimationFrame(() => document.querySelector<HTMLInputElement>("[data-quick-add]")?.focus());
+  };
+
   const addColumn = async (e: FormEvent) => {
     e.preventDefault();
     if (columnName.trim() === "") return setColumnError("Enter a column name.");
     try {
-      const next = await client.addColumn(board.id, columnName.trim());
-      setState({ board: next, tasks });
+      await client.addColumn(board.id, columnName.trim());
       setColumnName("");
       setColumnError(undefined);
+      await load();
     } catch (err) {
       setColumnError(describe(err));
     }
@@ -126,11 +343,16 @@ export function BoardView({ client, session, boardId, onLoaded }: {
           .map((c) => {
             const here = shown.filter((t) => t.columnId === c.id);
             return (
-              <section key={c.id} className="column" aria-labelledby={`col-${c.id}`}>
-                <h2 id={`col-${c.id}`}>{c.name} ({here.length})</h2>
+              <section key={c.id} className="column" aria-labelledby={`col-${c.id}`} data-over={over === c.id || undefined}
+                onDragOver={(e) => { if (dragging && e.dataTransfer.types.includes(TASK_TYPE)) { e.preventDefault(); setOver(c.id); } }}
+                onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(null); }}
+                onDrop={(e) => drop(e, c.id)}>
+                <h2 id={`col-${c.id}`}>{c.name} <span className="count">{here.length}</span></h2>
                 <ul className="cards" aria-labelledby={`col-${c.id}`}>
-                  {here.map((t) => <Card key={t.id} task={t} onOpen={() => setEditing(t)} />)}
+                  {here.map((t) => card(t))}
                 </ul>
+                {here.length === 0 && !filtered && <p className="meta column-empty">Nothing here yet.</p>}
+                <QuickAdd column={c} onAdd={quickAdd(c.id)} />
               </section>
             );
           })}
@@ -138,15 +360,16 @@ export function BoardView({ client, session, boardId, onLoaded }: {
     );
   const listView = (
     <ul className="cards" aria-label="Tasks">
-      {shown.map((t) => <Card key={t.id} task={t} columnName={nameOf(t.columnId)} onOpen={() => setEditing(t)} />)}
+      {shown.map((t) => card(t, nameOf(t.columnId)))}
     </ul>
   );
 
   return (
-    <>
+    <div className={editing ? "board-layout has-panel" : "board-layout"}>
+      <div className="board-main" inert={editing !== undefined && narrow}>
       <div className="page-head">
         <h1>{board.title}</h1>
-        <Button onClick={() => setEditing("new")} disabled={board.columns.length === 0}>
+        <Button onClick={newTask} disabled={board.columns.length === 0}>
           <PlusIcon aria-hidden="true" /> New task
         </Button>
       </div>
@@ -165,10 +388,12 @@ export function BoardView({ client, session, boardId, onLoaded }: {
         <Checkbox label="Created or last changed by an agent" checked={agentOnly} onChange={(e) => setAgentOnly(e.target.checked)} />
         {filtered && <Button variant="ghost" onClick={clear}>Clear filters</Button>}
       </div>
-      {tasks.length === 0 ? (
-        <EmptyState title="No tasks yet" description="Add the first task to this list."
-          action={board.columns.length > 0 ? <Button onClick={() => setEditing("new")}>New task</Button> : undefined} />
-      ) : shown.length === 0 ? (
+      <p className="sr-only" role="status">{announce}</p>
+      {notice && <p className="banner" role="alert">{notice}</p>}
+      {tasks.length === 0 && board.columns.length > 0 && (
+        <EmptyState title="No tasks yet" description="Type a title in a column below and press Enter." />
+      )}
+      {tasks.length > 0 && shown.length === 0 ? (
         <EmptyState title="No task matches the filters" action={<Button onClick={clear}>Clear filters</Button>} />
       ) : (
         <Tabs label="View" value={view} onValueChange={setView}
@@ -182,17 +407,11 @@ export function BoardView({ client, session, boardId, onLoaded }: {
           error={columnError} />
         <Button type="submit" variant="secondary">Add column</Button>
       </form>
-      {editing !== null && (
-        <TaskDialog
-          client={client}
-          session={session}
-          board={board}
-          task={editing === "new" ? undefined : editing}
-          onClose={() => setEditing(null)}
-          onSaved={() => { setEditing(null); void load(); }}
-          onChanged={(t) => { setEditing(t); void load(); }}
-        />
+      </div>
+      {editing !== undefined && (
+        <TaskPanel key={editing.id} narrow={narrow} onDirty={(d) => { unsaved.current = d; }} client={client} session={session} board={board} task={editing}
+          onClose={close} onChanged={(t) => { setState((s) => s && "board" in s ? { ...s, tasks: s.tasks.map((x) => (x.id === t.id ? t : x)) } : s); void load(); }} />
       )}
-    </>
+    </div>
   );
 }
