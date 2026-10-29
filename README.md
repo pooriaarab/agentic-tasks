@@ -206,8 +206,7 @@ There is no `agentic-tasks/mcp` entry. Start the MCP server with `npx agentic-ta
 
 ### Library
 
-The library reads no environment variables. Give it a store. Every call takes a
-principal context from `agentic-identity`. `trustedContext(id, kind)` makes one from a principal id and a kind.
+The library reads no environment variables. Give it a store. Every `Tasks` method takes a principal context from `agentic-identity`. `trustedContext(id, kind)` makes one from a principal id and a kind.
 It does not check them. Use it only in local code that you control.
 
 ```ts
@@ -265,19 +264,23 @@ Add this to your Wrangler config. It sets the `nodejs_compat` flag. The `agentic
 The package does not ship the schema. Set up the database in this order:
 
 1. Create the database in the EU: `npx wrangler d1 create agentic-tasks --location weur`. For `us`, use `--location wnam` or `--location enam`, and set `TASKS_REGION` to `us`.
-2. Copy every file in this repo's `migrations/` folder into your `migrations/` folder.
-3. Run `npx wrangler d1 migrations apply DB --remote`.
+2. Put the id that `d1 create` prints in `database_id` in the config above.
+3. Copy every file in this repo's `migrations/` folder into your `migrations/` folder.
+4. Run `npx wrangler d1 migrations apply DB --remote`.
 
 | Binding or variable | Needed | What it does |
 |---|---|---|
 | `DB` | Yes | The D1 database. Without it every route under `/api/v1/tasks` except `health` answers 503 `STORE_NOT_CONFIGURED`. |
-| `TASKS_REGION` | Yes | `eu` or `us`, where the database lives. You set it. The Worker does not detect it. With `DB` bound and no valid value, every route under `/api/v1/tasks` except `health` answers 503 `REGION_NOT_CONFIGURED`. A region mismatch is described below the table. |
+| `TASKS_REGION` | Yes | `eu` or `us`, where the database lives. You set it. The Worker does not detect it. Without a valid value, every route under `/api/v1/tasks` except `health` answers 503 `REGION_NOT_CONFIGURED`. See the region notes below. |
 | `TASKS_UNSAFE_LOCAL_TEST_AUTH` | No | `1` trusts the `X-Principal-Id` and `X-Principal-Kind` headers, on loopback requests only. Use it only for local dev and tests. A request that is not on loopback gets 403 `LOCAL_TEST_AUTH_NOT_LOOPBACK`. |
 | `TASKS_UNSAFE_LOCAL_REGION` | No | `1` lets `TASKS_REGION` be `unknown`, because local D1 reports no region. Local dev only. |
 
-Without test auth, the default export reads a bearer credential from the same D1 database. A write that sends a valid session cookie and no bearer token gets 403 `FORBIDDEN`.
-Run the `agentic-identity` Worker on that database to issue credentials. A request
-with no valid credential answers 401 `UNAUTHENTICATED`. If the store cannot do the credential check, the Worker answers 503 `STORE_BUSY` with `retry-after: 1`. A retry can succeed. On a region mismatch, a request with a credential gets the same 503, but a retry does not help. Check `TASKS_REGION` and the database location. A request with no credential gets 401 and never reads the store.
+Without test auth, the default export reads a bearer credential from the same D1 database. Run the `agentic-identity` Worker on that database to issue credentials. The responses are:
+
+- No valid credential: 401 `UNAUTHENTICATED`. The Worker never reads the store.
+- A write that sends a valid session cookie and no bearer token: 403 `FORBIDDEN`.
+- The store cannot do the credential check: 503 `STORE_BUSY` with `retry-after: 1`. A retry can succeed.
+- Region mismatch: 503 with a credential. A retry does not help. Check `TASKS_REGION` and the database location.
 
 The module also has these named exports:
 
@@ -285,7 +288,9 @@ The module also has these named exports:
 - `tasksOnD1(env)` returns the default `Tasks` on `DB`. `authOnD1(env)` returns the default credential check on `DB`.
 - `localTestAuth` and `isLoopbackRequest` are the loopback test auth.
 
-To use another store or credential check, call `createApp` yourself. It still needs the `DB` binding and a valid `TASKS_REGION`. Without them it answers 503 before it calls your store. With your own `auth` and a D1 store, a region mismatch answers 500 `INTERNAL`. Install `agentic-identity` `^0.6.0` in your app. This package uses that version. The example imports its types:
+To use another store or credential check, call `createApp` yourself. It still needs the `DB` binding and a valid `TASKS_REGION`. Without them it answers 503 before it calls your store. With your own `auth` and a D1 store, a region mismatch answers 500 `INTERNAL`.
+
+Install `agentic-identity` `^0.6.0` in your app. This package uses that version. The example imports its types:
 
 ```ts
 import { createApp } from "agentic-tasks/worker";
