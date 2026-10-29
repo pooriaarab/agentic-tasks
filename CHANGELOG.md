@@ -12,7 +12,7 @@ All notable changes to this package are in this file. The format follows
 
 ### Fixed
 
-- `eraseBoard` puts the board row back when the last step (`deleteResource`) is refused, for example for more than 100 owners. Before, the row stayed deleted and the board could not be found again.
+- `eraseBoard` puts the board row back when a step after the row delete fails, for example when `deleteResource` is refused for more than 100 owners. Before, the row stayed deleted and the board could not be found again.
 
 ## [0.9.0] - 2026-10-29
 

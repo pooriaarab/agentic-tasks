@@ -27,7 +27,7 @@ const plain = (value: unknown): JsonRecord[] => JSON.parse(JSON.stringify(value)
 
 function check(subject: Principal, deps: TasksAccountDeps): void {
   const { tasks, ctx } = deps ?? ({} as Partial<TasksAccountDeps>);
-  if (typeof tasks?.exportData !== "function" || typeof tasks.eraseBoard !== "function") throw new TaskError("INVALID_INPUT", "tasksAccount needs deps.tasks and deps.ctx");
+  if ((["exportData", "listTasks", "listProgress", "deleteTask", "eraseBoard"] as const).some((name) => typeof tasks?.[name] !== "function")) throw new TaskError("INVALID_INPUT", "tasksAccount needs deps.tasks and deps.ctx");
   const known = (PRINCIPAL_KINDS as readonly unknown[]).includes(subject?.kind);
   if (typeof subject?.id !== "string" || subject.id.trim() === "" || !known) throw new TaskError("INVALID_INPUT", "subject needs an id and a known kind");
   // One step in the chain, and it is the subject: a role belongs to the root of the chain, so a context with
@@ -55,12 +55,16 @@ export const tasksAccount: TasksAccount = {
     const { tasks, ctx } = deps;
     const counts = { boards: 0, tasks: 0, notes: 0 };
     // The export names the role of each board. Only a board the subject made and still owns goes: a board shared with them stays.
-    // A board row with no valid `createdBy` is skipped, so a corrupt row is never erased by guess.
-    // Each task goes first, with its notes, and the board last. `eraseBoard` deletes the board row before its tasks, so a stop
+        // Each task goes first, with its notes, and the board last. `eraseBoard` deletes the board row before its tasks, so a stop
     // inside it would hide the board from the next run. Here a stop leaves the board row in place, and the next run finds it and goes on.
     for (const { board, role } of (await tasks.exportData(ctx)).boards) {
       const by = board.createdBy as Partial<Principal> | null | undefined;
-      if (role !== "owner" || by?.id !== subject.id || by?.kind !== subject.kind) continue;
+      if (role !== "owner") continue;
+      // An owned board whose creator is not a valid principal cannot be matched to the subject. Erasing it by guess would be wrong,
+      // and skipping it would read as done, so the run stops and names the board.
+      const valid = typeof by?.id === "string" && by.id !== "" && (PRINCIPAL_KINDS as readonly unknown[]).includes(by.kind);
+      if (!valid) throw new TaskError("INVALID_INPUT", `erase stopped at board ${board.id}: its creator is not a valid principal. ${counts.boards} boards, ${counts.tasks} tasks, and ${counts.notes} notes were erased before it`);
+      if (by.id !== subject.id || by.kind !== subject.kind) continue;
       try {
         const rows: Task[] = await tasks.listTasks({ boardId: board.id }, ctx);
         // A task row with no id cannot be deleted by id. Stop before anything goes, so a retry stops the same way and never reads as done.

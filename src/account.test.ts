@@ -11,7 +11,7 @@
 //  6. A board that was shared to the subject with the owner role, but made by another, stays.
 //  7. A second erase counts zero. Erase leaves a second person's boards alone.
 //  8. A person and an agent with the same id are two subjects.
-//  9. A board with a corrupt creator is left alone. A task row with no id stops that board the same way on every run, before anything goes.
+//  9. A board with a corrupt creator stops the run, names the board, and stays; a repeat stops the same way. A task row with no id stops that board the same way on every run, before anything goes.
 //     A refused last step (too many owners) keeps the board findable: a repeat fails the same way, not zero.
 //     An erase that stops in the middle names the board, leaves the board row, and a repeat finishes it and never reads as done while data remains.
 // 10. The collection names stay stable, so a rename fails here before it breaks a host.
@@ -92,7 +92,7 @@ describe("exportAccount", () => {
 });
 
 describe("eraseAccount", () => {
-  it("skips a board with a corrupt creator, and names the board when an erase stops", async () => {
+  it("stops at a corrupt creator or a task row with no id, and names the board when an erase stops", async () => {
     const store = createMemoryStore();
     const tasks = createTasks({ store });
     const deps = (p: Principal) => ({ tasks, ctx: ctxOf(p) });
@@ -100,8 +100,18 @@ describe("eraseAccount", () => {
     const bad = await board(tasks, ANA, "bad");
     const row = (await store.get("boards", bad.b.id))!;
     await store.put("boards", bad.b.id, { ...row, createdBy: null });
-    expect(await tasksAccount.eraseAccount(ANA, deps(ANA))).toEqual({ boards: 1, tasks: 1, notes: 1 });
+    // The good board goes first, in order of the export; the corrupt one stops the run and is named, every time.
+    for (let run = 0; run < 2; run++) {
+      const stopped = await tasksAccount.eraseAccount(ANA, deps(ANA)).catch((e) => e);
+      expect(stopped).toMatchObject({ code: "INVALID_INPUT" });
+      expect(stopped.message).toContain(bad.b.id);
+    }
     expect((await store.get("boards", bad.b.id))).not.toBeNull();
+    // Repair the creator, and the run finishes both boards, whatever order the first run took.
+    await store.put("boards", bad.b.id, row);
+    expect((await tasksAccount.eraseAccount(ANA, deps(ANA))).boards).toBeGreaterThanOrEqual(1);
+    expect((await store.get("boards", good.b.id))).toBeNull();
+    expect((await tasksAccount.exportAccount(ANA, deps(ANA))).boards).toEqual([]);
     // A task row with no id stops that board before anything goes, names the board, and stops the same way on a repeat.
     const rowless = await board(tasks, ANA, "rowless");
     await store.put("tasks", "stray", { boardId: rowless.b.id, title: "t", position: 0 });
@@ -119,10 +129,8 @@ describe("eraseAccount", () => {
     const flaky = { ...tasks, deleteTask: async (id: string, c: never) => { if (++calls === 2) throw new Error("db down"); return tasks.deleteTask(id, c); } };
     const err = await tasksAccount.eraseAccount(ANA, { tasks: flaky as never, ctx: ctxOf(ANA) }).catch((e) => e);
     expect(err.message).toContain(second.b.id);
-    expect(err.message).not.toContain(good.b.id);
-    expect(await tasksAccount.eraseAccount(ANA, deps(ANA))).toEqual({ boards: 1, tasks: 1, notes: expect.any(Number) });
-    // Only the corrupt board is left.
-    expect((await tasksAccount.exportAccount(ANA, deps(ANA))).boards).toMatchObject([{ id: bad.b.id }]);
+        expect(await tasksAccount.eraseAccount(ANA, deps(ANA))).toEqual({ boards: 1, tasks: 1, notes: expect.any(Number) });
+    expect((await tasksAccount.exportAccount(ANA, deps(ANA))).boards).toEqual([]);
   });
 
   it("erases the boards the subject made and owns, counts them, and is safe to run twice", async () => {
