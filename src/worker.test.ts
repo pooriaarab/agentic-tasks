@@ -12,7 +12,7 @@ import { createTasks, type Tasks } from "./tasks.js";
 //  2. "Network connection lost" may have applied the write, so it stays 500.
 //  3. A TaskError keeps its own status, and an unknown error stays 500.
 //  4. With an Auth port, a request needs a credential that it resolves. The header
-//     trust flag plays no part, and the headers are ignored.
+//     local test auth flag plays no part, and the headers are ignored.
 //  4b. Local test auth serves a loopback request only. A real host, or a client
 //      address that is missing or not loopback, gets 403 and never reaches the task code.
 //  5. The migration holds the adapter schema, so the two cannot drift apart.
@@ -127,7 +127,7 @@ describe("app on an Auth port", () => {
     return { app: createApp(() => tasks, auth), token: await issue(owner) };
   }
 
-  it("serves a request with a credential, with no trust flag set", async () => {
+  it("serves a request with a credential, with no local test auth flag set", async () => {
     const { app, token } = await setup();
     const created = await app.request(
       "/api/v1/tasks/boards",

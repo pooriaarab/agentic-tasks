@@ -76,7 +76,7 @@ interface Bindings {
 }
 
 // The region has no default, and "unknown" is not a place. A Worker with no
-// valid region claim refuses to serve, as the trust flag does. The one exception
+// valid region claim refuses to serve. The one exception
 // is local dev with TASKS_UNSAFE_LOCAL_REGION=1.
 function regionOf(env: Bindings): Region | undefined {
   try {
