@@ -64,7 +64,7 @@ async function jsonBody<T>(c: Context): Promise<T> {
 
 interface Bindings {
   // Local dev and tests only. Swaps the stored credentials for principal headers,
-  // and only for requests on a loopback host. Never set it in production.
+  // and only for requests on a loopback host and client address. Never set it in production.
   TASKS_UNSAFE_LOCAL_TEST_AUTH?: string;
   // The D1 database. Create it in the EU: wrangler d1 create <name> --location weur
   DB?: D1Like;

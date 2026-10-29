@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createMemoryAuth, createMemoryStore, type PrincipalContext } from "agentic-identity";
 import { D1_SCHEMA } from "agentic-identity/cloudflare";
 import { TaskError } from "./model.js";
-import { createApp, tasksOnD1 } from "./worker.js";
+import { createApp, localTestAuth, tasksOnD1 } from "./worker.js";
 import { createTasks, type Tasks } from "./tasks.js";
 
 // Failure list, written before the code. A store error that did not apply a write
@@ -13,8 +13,8 @@ import { createTasks, type Tasks } from "./tasks.js";
 //  3. A TaskError keeps its own status, and an unknown error stays 500.
 //  4. With an Auth port, a request needs a credential that it resolves. The header
 //     trust flag plays no part, and the headers are ignored.
-//  4b. Local test auth serves a loopback request only. A real host, or a request
-//      that carries cf-connecting-ip, gets 403 and never reaches the task code.
+//  4b. Local test auth serves a loopback request only. A real host, or a client
+//      address that is missing or not loopback, gets 403 and never reaches the task code.
 //  5. The migration holds the adapter schema, so the two cannot drift apart.
 const ENV = { TASKS_UNSAFE_LOCAL_TEST_AUTH: "1", DB: {}, TASKS_REGION: "eu" };
 
@@ -75,6 +75,11 @@ describe("local test auth", () => {
 
   it("refuses a request that came through the edge, even on a loopback host", async () => {
     expect(await get("http://localhost/api/v1/tasks/boards/b", { ...LOCAL, "cf-connecting-ip": "203.0.113.9" })).toBe(403);
+  });
+
+  it("refuses a non-loopback request inside the Auth itself", async () => {
+    const request = new Request("https://tasks.example.com/", { headers: LOCAL });
+    expect(await localTestAuth.authenticate(request)).toBeNull();
   });
 
   it("refuses a request with no client address, as from a service binding", async () => {
