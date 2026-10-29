@@ -6,7 +6,7 @@ All notable changes to this package are in this file. The format follows
 
 ## [Unreleased]
 
-## [0.10.0] - 2026-10-29
+## [0.11.0] - 2026-10-29
 
 ### Changed
 
@@ -20,6 +20,17 @@ All notable changes to this package are in this file. The format follows
 - A keyboard and single-pointer way to move a card (WCAG 2.2, 2.5.7): Alt and the left or right arrow, or the card menu.
 - Due date, assignee, claim, and label chips on each card. A date before today on an open task shows as late.
 - `E2E_PORT` sets the port of the browser tests, so parallel runs do not clash.
+
+## [0.10.0] - 2026-10-29
+
+### Added
+
+- Sharing beyond a plain grant, on every surface. The owner of a board can list its grants, invites, and share links, invite a person by email or an agent by handle, and make and revoke share links. SDK: `listAccess`, `inviteToBoard`, `createBoardLink`, `revokeBoardLink` (also on `agentic-tasks/client`). CLI: `access`, `invite`, `link`, `unlink`. MCP tools: `list_access`, `create_invite`, `create_link`, `revoke_link`. HTTP: `GET /boards/:id/access`, `POST /boards/:id/invites`, `POST /boards/:id/links`, `DELETE /boards/:id/links/:linkId`. An invite or a link never gives owner. A list shows no email and no link token.
+- `tasksAccount`: `exportAccount` and `eraseAccount` for a host that runs account export and erase across packages. They return plain JSON by collection and counts by collection, so the host does not read the board layout. The erase deletes each task before its board.
+
+### Fixed
+
+- `eraseBoard` puts the board row back when a step after the row delete fails, for example when `deleteResource` is refused for more than 100 owners. Before, the row stayed deleted and the board could not be found again.
 
 ## [0.9.0] - 2026-10-29
 

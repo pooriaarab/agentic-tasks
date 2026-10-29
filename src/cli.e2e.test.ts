@@ -172,6 +172,31 @@ describe("agentic-tasks CLI (built binary)", { timeout: 30_000 }, () => {
     expect(errorCodeOf(refused)).toBe("FORBIDDEN");
   });
 
+  it("lists access, invites, and makes and revokes a share link", () => {
+    const { boardId } = makeBoard();
+    const invite = run(["invite", boardId, "viewer", "--email", "ada@example.com", "--expires-in-ms", "60000", ...ALICE]);
+    expect(invite.code).toBe(0);
+    const link = JSON.parse(run(["link", boardId, "viewer", "--signed-in-only", "true", ...ALICE]).stdout) as { id: string; token: string };
+    expect(link.token).toBeTruthy();
+
+    const listed = run(["access", boardId, ...ALICE]);
+    const access = JSON.parse(listed.stdout) as { grants: unknown[]; invites: unknown[]; links: { id: string; signedInOnly: boolean }[] };
+    expect(access.grants).toHaveLength(2);
+    expect(access.invites).toHaveLength(1);
+    expect(access.links).toMatchObject([{ id: link.id, signedInOnly: true }]);
+    expect(listed.stdout).not.toContain("ada@example.com");
+    expect(listed.stdout).not.toContain(link.token);
+
+    expect(errorCodeOf(run(["access", boardId, ...BOT]))).toBe("FORBIDDEN");
+    expect(errorCodeOf(run(["link", boardId, "viewer", ...BOT]))).toBe("FORBIDDEN");
+    expect(errorCodeOf(run(["invite", boardId, "owner", "--handle", "x", ...ALICE]))).toBe("INVALID_INPUT");
+    expect(errorCodeOf(run(["invite", boardId, "viewer", ...ALICE]))).toBe("INVALID_INPUT");
+    expect(run(["link", boardId, "viewer", "--signed-in-only", "maybe", ...ALICE]).code).toBe(2);
+
+    expect(JSON.parse(run(["unlink", boardId, link.id, ...ALICE]).stdout)).toEqual({ revoked: true });
+    expect(errorCodeOf(run(["unlink", boardId, "nope", ...ALICE]))).toBe("NOT_FOUND");
+  });
+
   it("shares a board by role and takes the role away on unshare", () => {
     const board = JSON.parse(run(["board", "Sprint", "--columns", "Todo", ...ALICE]).stdout) as { id: string };
     expect(run(["share", board.id, "bot-1", "viewer", "--subject-kind", "agent", ...ALICE]).code).toBe(0);
@@ -521,6 +546,10 @@ describe("agentic-tasks MCP server over stdio (built binary)", () => {
       "list_progress",
       "share_board",
       "unshare_board",
+      "list_access",
+      "create_invite",
+      "create_link",
+      "revoke_link",
       "delete_task",
       "list_boards",
       "export_data",
@@ -607,5 +636,21 @@ describe("agentic-tasks MCP server over stdio (built binary)", () => {
     });
     expect(result.isError).toBe(true);
     expect(textOf(result)).toContain("INVALID_INPUT");
+  });
+
+  it("lists access, invites, and makes and revokes a share link through tool calls", async () => {
+    const alice = { id: "alice", kind: "human" };
+    const board = JSON.parse(textOf(await call("create_board", { title: "Sprint", principal: alice }))) as { id: string };
+    const invite = await call("create_invite", { boardId: board.id, role: "viewer", handle: "helper", principal: alice });
+    expect(invite.isError).toBeFalsy();
+    const link = JSON.parse(textOf(await call("create_link", { boardId: board.id, role: "viewer", principal: alice }))) as { id: string; token: string };
+    const listed = textOf(await call("list_access", { boardId: board.id, principal: alice }));
+    expect(JSON.parse(listed)).toMatchObject({ links: [{ id: link.id }], invites: [{ for: "handle", handle: "helper" }] });
+    expect(listed).not.toContain(link.token);
+
+    const refused = await call("create_link", { boardId: board.id, role: "viewer", principal: { id: "bob", kind: "human" } });
+    expect(refused.isError).toBe(true);
+    expect(textOf(refused)).toContain("FORBIDDEN");
+    expect(JSON.parse(textOf(await call("revoke_link", { boardId: board.id, linkId: link.id, principal: alice })))).toEqual({ revoked: true });
   });
 });

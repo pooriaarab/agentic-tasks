@@ -68,7 +68,7 @@ for, and its scopes. A board is a resource with roles. A call needs a role:
 | viewer | read the board, its tasks, and progress notes |
 | commenter | also add progress notes |
 | editor | also add columns, make, move, edit, claim, release, and close tasks |
-| owner | also share the board and take access away |
+| owner | also share the board, invite, make share links, list access, and take access away |
 
 The person who makes a board owns it. An agent that acts for a person gets that
 person's role, cut down by the scopes that its chain leaves. Every check writes
@@ -79,6 +79,25 @@ the MCP tools (`share_board`, `unshare_board`), or `PUT` and `DELETE` on
 and an id, so a person and an agent with one id are two subjects. The CLI needs
 `--subject-kind`. Erase a board, with its tasks, notes, and grants, with `eraseBoard`,
 `erase`, `erase_board`, or `DELETE /boards/:id`. Only an owner can. Listing tasks needs a `boardId`.
+
+Every sharing call needs the owner role:
+
+| Action | SDK | CLI | MCP tool | HTTP |
+|---|---|---|---|---|
+| Give a role | `shareBoard` | `share` | `share_board` | `PUT /boards/:id/members/:kind/:subjectId` |
+| Take a role | `unshareBoard` | `unshare` | `unshare_board` | `DELETE /boards/:id/members/:kind/:subjectId` |
+| List grants, invites, links | `listAccess` | `access` | `list_access` | `GET /boards/:id/access` |
+| Invite by email or handle | `inviteToBoard` | `invite` | `create_invite` | `POST /boards/:id/invites` |
+| Make a share link | `createBoardLink` | `link` | `create_link` | `POST /boards/:id/links` |
+| Revoke a share link | `revokeBoardLink` | `unlink` | `revoke_link` | `DELETE /boards/:id/links/:linkId` |
+
+An invite or a link gives viewer, commenter, or editor, never owner. Only a grant makes an
+owner. An invite names an email (a person) or a handle (an agent). A list shows no email.
+A link token shows once, in the reply that makes it. A list shows the link id, role,
+expiry, and revoke time, and never the token. `expiresInMs` (`--expires-in-ms`) sets how long an invite or
+link lives. `signedInOnly` (`--signed-in-only true`) limits a link to signed-in people. A link or
+an invite on its own does not change the board: accepting an invite and opening a link are
+part of `agentic-identity`.
 
 ## Lifecycle
 
@@ -91,6 +110,8 @@ and an id, so a person and an agent with one id are two subjects. The CLI needs
   are assigned to, and the notes you wrote. A task is the whole task: it names the other
   people and agents on it and holds text that they wrote. The notes are only yours. Share
   the file with care. An agent exports its own tasks and notes, from the boards it can reach. The role is the grant of the person or agent at the root of its chain.
+
+- A host that runs account export and erase across many packages calls `tasksAccount` (from `agentic-tasks`). It has `exportAccount(subject, { tasks, ctx })` and `eraseAccount(subject, { tasks, ctx })`, so the host does not read the board layout. `ctx` must be the context of the subject, with one step in its chain that is the subject (as `trustedContext` makes): a context for someone else, or a delegated chain, throws, even for an agent subject. The export has plain JSON in `boards` (each with your `role`), `tasks`, and `notes`. The erase removes each board that the subject made and still owns, with its tasks and notes, and returns counts of `boards`, `tasks`, and `notes`. The tasks and notes that other people wrote on that board go too, and the counts include them. A task added while the erase runs may be erased and not counted. A board that was shared to the subject stays, and so do the tasks and notes the subject wrote on another person's board. If an erase stops half way, the error names the board id. Each task goes before its board, so the board stays in place and a repeat of the erase finds it and counts only what is left: the counts of the runs add up. A board that the subject owns but whose stored creator is not a valid principal, and a stored task row with no id, stop the erase and name the board; for the task row, before anything goes on that board, and it stops the same way each time until the row is removed. A board the subject made goes even when others now work in it. The shape is provisional: it is the `AccountPackage` contract that a later `agentic-identity` release adds to `agentic-identity/account`. The `agentic-identity/account` of a release before it has a different contract (`AccountApp`), and `tasksAccount` does not fit that one. The subject is an id and a kind: the host takes the kind from the signed-in principal and does not guess it. Export and erase are two calls, so a task written between them is erased and not exported: stop writes first.
 
 ## SDK
 
@@ -115,7 +136,7 @@ try {
   `/api/v1/tasks` after any path prefix.
 - `token` is a bearer credential that the Worker accepts. `fetch` is optional.
 - One method for each route: `createBoard`, `getBoard`, `addColumn`, `shareBoard`,
-  `unshareBoard`, `eraseBoard`, `listBoards`, `exportData`, `deleteTask`, `createTask`, `listTasks`, `getTask`, `updateTask`,
+  `unshareBoard`, `listAccess`, `inviteToBoard`, `createBoardLink`, `revokeBoardLink`, `eraseBoard`, `listBoards`, `exportData`, `deleteTask`, `createTask`, `listTasks`, `getTask`, `updateTask`,
   `moveTask`, `claim`, `release`, `closeTask`, `progress`, and `listProgress`.
 - A refused call throws `TasksApiError` with the API error `code` and the HTTP `status`.
   A reply that is not an API error, or a success reply with the wrong shape, has the code `UNKNOWN`.
@@ -151,12 +172,12 @@ npm run deploy:demo
 - People and agents claim a task for up to one day. The holder or a board owner can release the claim.
 - Progress notes on a task.
 - Agent tools over MCP: create, get, list, move, update, claim, release, and close tasks, and add and list progress notes.
-- Board roles: viewer, commenter, editor, and owner. Share a board with a role.
+- Board roles: viewer, commenter, editor, and owner. Share a board with a role, invite by email or handle, and make share links.
 
 ## Not yet
 
 - Real-time updates. A person or an agent sees a change by someone else only when it reads the task or the list again.
-- Invites and share links. Board roles work now.
+- Accepting an invite and opening a share link in this package. Make and list them here. `agentic-identity` takes them.
 
 ## Surfaces
 
@@ -197,7 +218,6 @@ What it does:
   or use the card menu: "Move to" a column. Press F2 on a card, or use "Rename" in the card menu, to rename it in place.
 - Open a card to edit it in the side panel: description, labels, due date, column, assignees, and claim.
   A card shows the due date, the assignees, and the claim as small chips. A late due date has its own tone.
-- Edit, assign, claim, release, and close a task.
 - Show tasks as a board or a list. Filter by text, status, and column, or show
   only tasks that an agent created or last changed.
 - Mark each task that an agent created, or that an agent changed last. The mark is words and an icon.
@@ -205,7 +225,7 @@ What it does:
 
 It works with a keyboard, shows a focus ring, and follows the system light or
 dark theme or your pick. An axe check for WCAG 2.2 AA runs on each view in both
-themes. Screenshots are in `docs/screenshots`. The screenshots from before the 0.10.0 redesign are in
+themes. Screenshots are in `docs/screenshots`. The screenshots from before the 0.11.0 redesign are in
 `docs/screenshots/before`. The calm look follows the `agentic-design` 0.5 tokens, which take their style from
 [Tiny Little Office](https://tinylittleoffice.com) (MIT). No code is copied.
 
@@ -260,6 +280,24 @@ Workers or principals.
 `react` and `react-dom` (version 19) are optional peer dependencies. Install them to use `agentic-tasks/ui`.
 The CLI, the MCP server, and `agentic-tasks/client` do not need them. The web UI that the Worker serves
 uses the same components.
+
+## Run locally
+
+```sh
+git clone https://github.com/pooriaarab/agentic-tasks
+cd agentic-tasks
+npm install && npm run dev
+```
+
+You can also use `bun install && bun run dev`. The `dev` script calls npm, so npm must be installed. The scripts need macOS, Linux, or WSL. The `dev` script builds the package, then starts `wrangler dev` on <http://localhost:8791>. Wrangler keeps a local D1 database. The `dev` script turns off Wrangler telemetry. Set `WRANGLER_SEND_METRICS=false` when you run other wrangler commands.
+
+```sh
+curl -i http://localhost:8791/api/v1/tasks/health   # 200
+```
+
+The API needs a credential. To call it with test auth, stop `npm run dev` and use the commands in "Develop". They start the server with test auth on port 8787.
+
+`npm run dev:smoke` runs the same check by itself. It starts the dev server. It waits for `/api/v1/tasks/health` to answer 200. It stops the server. CI runs it as the "dev smoke" step. To use another port, change `8791` in the `dev` and `dev:smoke` scripts.
 
 ## Develop
 

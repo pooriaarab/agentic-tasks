@@ -90,6 +90,29 @@ describe("createClient against the Worker", () => {
     expect((await refusal(alice.getBoard(board.id))).code).toBe("NOT_FOUND");
   });
 
+  it("lists access, invites, and makes and revokes a share link", async () => {
+    const board = await alice.createBoard({ title: "Shared" });
+    const invite = await alice.inviteToBoard(board.id, { role: "viewer", email: "ada@example.com", expiresInMs: 86_400_000 });
+    expect(typeof invite.id).toBe("string");
+    const link = await alice.createBoardLink(board.id, { role: "viewer", signedInOnly: true });
+    expect(link.token.length).toBeGreaterThan(20);
+
+    const access = await alice.listAccess(board.id);
+    expect(access.grants).toHaveLength(1);
+    expect(access.invites.map((i) => i.id)).toEqual([invite.id]);
+    expect(JSON.stringify(access)).not.toContain("ada@example.com");
+    expect(JSON.stringify(access)).not.toContain(link.token);
+    expect(access.links).toMatchObject([{ id: link.id, role: "viewer", signedInOnly: true }]);
+
+    expect((await refusal(bob.listAccess(board.id))).code).toBe("FORBIDDEN");
+    expect((await refusal(bob.createBoardLink(board.id, { role: "viewer" }))).code).toBe("FORBIDDEN");
+    expect((await refusal(alice.inviteToBoard(board.id, { role: "owner" as never, handle: "bot" }))).code).toBe("INVALID_INPUT");
+
+    await alice.revokeBoardLink(board.id, link.id);
+    expect((await alice.listAccess(board.id)).links[0]?.revokedAt).toBeTypeOf("number");
+    expect((await refusal(alice.revokeBoardLink(board.id, "nope"))).code).toBe("NOT_FOUND");
+  });
+
   it("deletes a task, lists boards, and exports the caller's data", async () => {
     const board = await alice.createBoard({ title: "Lifecycle" });
     await alice.addColumn(board.id, "Todo");
@@ -258,6 +281,8 @@ describe("createClient requests", () => {
     const calls = [
       (id: string) => client.getBoard(id),
       (id: string) => client.eraseBoard(id),
+      (id: string) => client.listAccess(id),
+      (id: string) => client.revokeBoardLink("b", id),
       (id: string) => client.unshareBoard("b", { kind: "human", id }),
       (id: string) => client.unshareBoard(id, { kind: "human", id: "x" }),
       (id: string) => client.getTask(id),

@@ -206,6 +206,15 @@ export function BoardView({ client, session, boardId, onLoaded }: {
     if (focusReq.onlyIfIdle && at !== null && at !== document.body && !card?.parentElement?.contains(at)) return;
     (card ?? document.querySelector<HTMLElement>("[data-quick-add]") ?? document.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]'))?.focus();
   }, [focusReq, state]);
+  const moving = useRef(new Set<string>());
+  // If a reload no longer has the open task, close the panel and say so.
+  useEffect(() => {
+    if (editingId === null || state === null || !("tasks" in state) || state.tasks.some((t) => t.id === editingId)) return;
+    setEditingId(null);
+    unsaved.current = false;
+    setNotice("The task you had open is no longer on this list.");
+    setFocusReq({ id: editingId, onlyIfIdle: false });
+  }, [editingId, state]);
   const latest = useRef(0);
   const load = useCallback(async () => {
     const mine = ++latest.current;
@@ -265,9 +274,12 @@ export function BoardView({ client, session, boardId, onLoaded }: {
   const focusCard = (id: string, onlyIfIdle = false) => setFocusReq({ id, onlyIfIdle });
   // A move remounts the card in its new column, so give the focus back and say where it went.
   const move = (task: Task, to: string) => {
-    if (task.columnId === to) return;
+    // A second move of the same card waits for the first, so two quick key presses do not both start here.
+    if (task.columnId === to || moving.current.has(task.id)) return;
+    moving.current.add(task.id);
     setAnnounce("");
     void attempt(() => client.moveTask(task.id, { columnId: to })).then((ok) => {
+      moving.current.delete(task.id);
       if (ok) setAnnounce(`Moved ${task.title} to ${nameOf(to)}.`);
       focusCard(task.id, true);
     });
