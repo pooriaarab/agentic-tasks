@@ -122,7 +122,7 @@ export function Lists({ client, lists, setLists, onOpen }: {
         <Input label="New list name" value={title} onChange={(e) => setTitle(e.target.value)} />
         <Button type="submit" loading={busy}>Create list</Button>
       </form>
-      <form className="row" onSubmit={open} noValidate style={{ marginTop: "var(--ad-space-3)" }}>
+      <form className="row" onSubmit={open} noValidate style={{ marginTop: "var(--agd-space-3)" }}>
         <Input label="Open a list by id" value={openId} onChange={(e) => setOpenId(e.target.value)} />
         <Button type="submit" variant="secondary">Open list</Button>
       </form>

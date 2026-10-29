@@ -10,6 +10,12 @@ All notable changes to this package are in this file. The format follows
 
 - `tasksAccount`: `exportAccount` and `eraseAccount` for a host that runs account export and erase across packages. They return plain JSON by collection and counts by collection, so the host does not read the board layout.
 
+## [0.9.0] - 2026-10-29
+
+### Changed
+
+- **BREAKING:** design class prefix is now agd-. The UI reads the `--agd-*` tokens from `agentic-design` ^0.4.0. The old prefix matches EasyList cosmetic rules, so ad blockers hid design-styled controls. Host CSS that sets old-prefix tokens or targets old-prefix classes must use the agd- names instead.
+
 ## [0.8.0] - 2026-10-29
 
 ### Added
