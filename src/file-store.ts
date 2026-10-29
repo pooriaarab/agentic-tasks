@@ -111,11 +111,18 @@ export function createFileStore(path: string): Store {
       }
     },
     save: async (next) => {
-      await mkdir(dirname(path), { recursive: true });
       const temp = `${path}.${process.pid}.${randomUUID()}.tmp`;
-      await writeFile(temp, `${JSON.stringify(next, null, 2)}\n`);
-      await rename(temp, path);
+      try {
+        await writeFile(temp, `${JSON.stringify(next, null, 2)}\n`);
+        await rename(temp, path);
+      } catch (error) {
+        await rm(temp, { force: true });
+        throw error;
+      }
     },
   };
-  return storeFrom(backend, (work) => fileLock(`${path}.lock`, work));
+  return storeFrom(backend, async (work) => {
+    await mkdir(dirname(path), { recursive: true });
+    return fileLock(`${path}.lock`, work);
+  });
 }

@@ -50,8 +50,9 @@ export function storeFrom(backend: Backend, lock: Lock): Store {
         let dirty = false;
         const tx: Tx = {
           get<R extends { id: string }>(collection: Collection, id: string) {
-            const row = draft[collection][id];
-            return row === undefined ? undefined : (structuredClone(row) as R);
+            const rows = draft[collection];
+            if (!Object.hasOwn(rows, id)) return undefined;
+            return structuredClone(rows[id]) as R;
           },
           list<R extends { id: string }>(
             collection: Collection,
