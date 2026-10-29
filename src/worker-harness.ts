@@ -4,7 +4,7 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { issueCredential } from "agentic-identity";
+import { issueCredential, type Store } from "agentic-identity";
 import { createD1Store, type D1Like } from "agentic-identity/cloudflare";
 import { getPlatformProxy } from "wrangler";
 
@@ -86,4 +86,14 @@ export async function seedCredential(persistDir: string, personId: string): Prom
   } finally {
     await proxy.dispose();
   }
+}
+
+// Opens the local D1 database of a persist directory as a store, after a
+// migration. Two opens on one directory are two stores on the same data.
+export async function openLocalD1(persistDir: string): Promise<{ store: Store; dispose: () => Promise<void> }> {
+  // On purpose for the whole test process: wrangler must send no metrics.
+  process.env.WRANGLER_SEND_METRICS = "false";
+  migrate(persistDir);
+  const proxy = await getPlatformProxy<{ DB: D1Like }>({ persist: { path: join(persistDir, "v3") } });
+  return { store: createD1Store(proxy.env.DB, { region: "unknown" }), dispose: () => proxy.dispose() };
 }
