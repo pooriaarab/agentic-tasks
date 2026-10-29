@@ -163,7 +163,7 @@ function normalizeDueDate(value: unknown): string | null {
   return value;
 }
 
-type Collection = "boards" | "tasks" | "progress";
+type Collection = "boards" | "tasks" | "progress" | "counters";
 
 // An id that the store would refuse cannot name a row, so it names nothing.
 async function getRow<T>(ops: StoreOps, collection: Collection, id: string): Promise<T | undefined> {
@@ -269,6 +269,18 @@ function heldByOther(claim: unknown, who: Principal, nowMs: number): boolean {
 function nextPosition(siblings: Task[]): number {
   const positions = siblings.map((task) => task.position).filter(Number.isSafeInteger);
   return positions.length === 0 ? 0 : Math.max(...positions) + 1;
+}
+
+// Hands out the next number of a sequence. A query in a transaction does not see
+// a row that another transaction adds, so two writers can both read the same
+// highest number. A counter doc is different: both writers read and write it, the
+// store sees the change, and the later one runs again. `floor` covers rows that
+// an earlier release wrote before the counter existed.
+async function allocate(tx: StoreOps, key: string, floor: number): Promise<number> {
+  const stored = ((await tx.get("counters", key)) as { next?: unknown } | null)?.next;
+  const next = Math.max(floor, Number.isSafeInteger(stored) ? (stored as number) : 0);
+  await tx.put("counters", key, { id: key, next: next + 1 });
+  return next;
 }
 
 function byPosition(a: Task, b: Task): number {
@@ -402,8 +414,10 @@ export function createTasks(options: TasksOptions): Tasks {
           title,
           description,
           columnId,
-          position: nextPosition(
-            await listRows<Task>(tx, "tasks", { boardId: board.id, columnId }),
+          position: await allocate(
+            tx,
+            `position:${board.id}:${columnId}`,
+            nextPosition(await listRows<Task>(tx, "tasks", { boardId: board.id, columnId })),
           ),
           labels,
           dueDate,
@@ -450,7 +464,9 @@ export function createTasks(options: TasksOptions): Tasks {
           await listRows<Task>(tx, "tasks", { boardId: task.boardId, columnId: target.columnId })
         ).filter((other) => other.id !== task.id);
         task.columnId = target.columnId;
-        task.position = target.position ?? nextPosition(siblings);
+        task.position =
+          target.position ??
+          (await allocate(tx, `position:${task.boardId}:${target.columnId}`, nextPosition(siblings)));
         touch(task, actor, clock().toISOString());
         await putRow(tx, "tasks", task);
         return task;
@@ -562,7 +578,11 @@ export function createTasks(options: TasksOptions): Tasks {
         const entry: ProgressEntry = {
           id: crypto.randomUUID(),
           taskId: task.id,
-          seq: Math.max(0, ...earlier.map((other) => other.seq).filter(Number.isSafeInteger)) + 1,
+          seq: await allocate(
+            tx,
+            `seq:${task.id}`,
+            Math.max(0, ...earlier.map((other) => other.seq).filter(Number.isSafeInteger)) + 1,
+          ),
           note: text,
           by: actor,
           at: clock().toISOString(),

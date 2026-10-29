@@ -384,7 +384,8 @@ describe.each(backends)("boards, columns, and tasks on the %s store", (_name, op
       await tx.put("tasks", first.id, { ...row, position: "abc" });
     });
     const second = await h.tasks.createTask({ boardId: board.id, title: "two" }, ALICE);
-    expect(second.position).toBe(0);
+    // The counter holds the next number, so the bad row does not set it.
+    expect(second.position).toBe(1);
     const listed = await h.tasks.listTasks({ boardId: board.id }, ALICE);
     expect(listed.map((task) => task.title).sort()).toEqual(["one", "two"]);
   });
