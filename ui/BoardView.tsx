@@ -194,6 +194,18 @@ export function BoardView({ client, session, boardId, onLoaded }: {
   const [columnName, setColumnName] = useState("");
   const [columnError, setColumnError] = useState<string>();
 
+  const [focusReq, setFocusReq] = useState<{ id: string; onlyIfIdle: boolean } | null>(null);
+  const unsaved = useRef(false);
+  // If a filter now hides the card, the focus goes to the first quick add field, or the chosen tab.
+  useEffect(() => {
+    if (focusReq === null) return;
+    setFocusReq(null);
+    const card = document.querySelector<HTMLElement>(`[data-task-id="${focusReq.id}"]`);
+    // After a slow move, leave the focus alone if the person has gone to another control.
+    const at = document.activeElement;
+    if (focusReq.onlyIfIdle && at !== null && at !== document.body && !card?.parentElement?.contains(at)) return;
+    (card ?? document.querySelector<HTMLElement>("[data-quick-add]") ?? document.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]'))?.focus();
+  }, [focusReq, state]);
   const latest = useRef(0);
   const load = useCallback(async () => {
     const mine = ++latest.current;
@@ -244,17 +256,13 @@ export function BoardView({ client, session, boardId, onLoaded }: {
     await load();
     return ok;
   };
-  const quickAdd = (columnId: string) => (title: string) =>
-    attempt(() => client.createTask({ boardId: board.id, title, columnId }));
-  // If a filter now hides the card, the focus goes to the first quick add field, not to the page top.
-  const focusCard = (id: string, onlyIfIdle = false) =>
-    requestAnimationFrame(() => {
-      const card = document.querySelector<HTMLElement>(`[data-task-id="${id}"]`);
-      // After a slow move, leave the focus alone if the person has gone to another control.
-      const at = document.activeElement;
-      if (onlyIfIdle && at !== null && at !== document.body && !card?.parentElement?.contains(at)) return;
-      (card ?? document.querySelector<HTMLElement>("[data-quick-add]") ?? document.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]'))?.focus();
-    });
+  // A filter would hide the new task at once, so a quick add clears the filters.
+  const quickAdd = (columnId: string) => (title: string) => {
+    if (filtered) clear();
+    return attempt(() => client.createTask({ boardId: board.id, title, columnId }));
+  };
+  // The focus moves in an effect, after React has drawn the new columns, never before.
+  const focusCard = (id: string, onlyIfIdle = false) => setFocusReq({ id, onlyIfIdle });
   // A move remounts the card in its new column, so give the focus back and say where it went.
   const move = (task: Task, to: string) => {
     if (task.columnId === to) return;
@@ -271,6 +279,7 @@ export function BoardView({ client, session, boardId, onLoaded }: {
     if (restoreFocus) focusCard(task.id);
   };
   const close = () => {
+    unsaved.current = false;
     const id = editingId;
     setEditingId(null);
     if (id) focusCard(id);
@@ -282,9 +291,14 @@ export function BoardView({ client, session, boardId, onLoaded }: {
     setDragging(null);
     if (task) move(task, columnId);
   };
+  const open = (id: string) => {
+    if (unsaved.current && id !== editingId) return setNotice("The open task has unsaved changes. Save it, or hide its details first.");
+    setNotice(undefined);
+    setEditingId(id);
+  };
   const card = (t: Task, columnName?: string) => (
     <Card key={t.id} task={t} columns={board.columns} columnName={columnName} renaming={renaming === t.id}
-      onOpen={() => setEditingId(t.id)} onMove={(to) => move(t, to)} onRename={() => setRenaming(t.id)}
+      onOpen={() => open(t.id)} onMove={(to) => move(t, to)} onRename={() => setRenaming(t.id)}
       onRenameDone={(title, restore) => rename(t, title, restore)} onDragStart={() => setDragging(t.id)} onDragEnd={() => { setDragging(null); setOver(null); }} />
   );
   // The quick add fields live in the board tab. Show it, with no filter hiding it, then focus the first.
@@ -298,10 +312,10 @@ export function BoardView({ client, session, boardId, onLoaded }: {
     e.preventDefault();
     if (columnName.trim() === "") return setColumnError("Enter a column name.");
     try {
-      const next = await client.addColumn(board.id, columnName.trim());
-      setState({ board: next, tasks });
+      await client.addColumn(board.id, columnName.trim());
       setColumnName("");
       setColumnError(undefined);
+      await load();
     } catch (err) {
       setColumnError(describe(err));
     }
@@ -383,7 +397,7 @@ export function BoardView({ client, session, boardId, onLoaded }: {
       </form>
       </div>
       {editing !== undefined && (
-        <TaskPanel key={editing.id} narrow={narrow} client={client} session={session} board={board} task={editing}
+        <TaskPanel key={editing.id} narrow={narrow} onDirty={(d) => { unsaved.current = d; }} client={client} session={session} board={board} task={editing}
           onClose={close} onChanged={(t) => { setState((s) => s && "board" in s ? { ...s, tasks: s.tasks.map((x) => (x.id === t.id ? t : x)) } : s); void load(); }} />
       )}
     </div>

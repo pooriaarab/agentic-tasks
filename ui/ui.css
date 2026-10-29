@@ -32,7 +32,7 @@ button.link { min-height: 24px; padding: 0; border: 0; background: none; font: i
 .bare-input { width: 100%; font: inherit; color: var(--agd-color-text); background: var(--agd-color-surface); border: 1px solid var(--agd-color-border-strong); border-radius: var(--agd-radius-md); padding: var(--agd-space-2) var(--agd-space-3); min-height: var(--agd-size-control); }
 .bare-input::placeholder { color: var(--agd-color-text-muted); opacity: 1; }
 .bare-input:focus-visible { outline: 2px solid var(--agd-color-focus); outline-offset: 2px; }
-.quick-add .bare-input { background: transparent; border-color: transparent; }
+.quick-add .bare-input { background: transparent; border-color: var(--agd-color-border); }
 .quick-add .bare-input:hover, .quick-add .bare-input:focus-visible { background: var(--agd-color-surface); border-color: var(--agd-color-border-strong); }
 .chips { display: flex; flex-wrap: wrap; gap: var(--agd-space-1); }
 .chip { display: inline-flex; align-items: center; gap: var(--agd-space-1); color: var(--agd-color-text-muted); background: var(--agd-color-surface-sunken); border-radius: var(--agd-radius-full); padding: 0 var(--agd-space-2); font-size: var(--agd-font-size-xs); }
@@ -43,7 +43,7 @@ button.link { min-height: 24px; padding: 0; border: 0; background: none; font: i
 .panel-head, .panel-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--agd-space-3); padding: var(--agd-space-3) var(--agd-space-4); }
 .panel-title { margin: 0; font-size: var(--agd-font-size-sm); color: var(--agd-color-text-muted); font-weight: var(--agd-font-weight-semibold); }
 .panel-form { display: grid; gap: var(--agd-space-3); padding: var(--agd-space-2) var(--agd-space-4) var(--agd-space-4); overflow-y: auto; }
-.title-input { font-size: var(--agd-font-size-lg); font-weight: var(--agd-font-weight-semibold); background: transparent; border-color: transparent; }
+.title-input { font-size: var(--agd-font-size-lg); font-weight: var(--agd-font-weight-semibold); background: transparent; border-color: var(--agd-color-border); }
 .title-input:hover, .title-input:focus-visible { background: var(--agd-color-surface); border-color: var(--agd-color-border-strong); }
 .panel-foot { border-top: 1px solid var(--agd-color-border); }
 .panel-foot .meta { margin: 0; }

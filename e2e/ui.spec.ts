@@ -285,6 +285,9 @@ test("rename again, rename from the card menu, a stale panel does not undo a mov
   await expect(page.getByRole("region", { name: /Doing/ }).locator("button.card-main", { hasText: "Gamma" })).toBeVisible();
 
   // A drop that carries no task, such as dropped text, moves nothing.
+  // A drag starts on the card, then something else, with no task in it, is dropped on Done.
+  const dt = await page.evaluateHandle(() => new DataTransfer());
+  await card(page, "Gamma").dispatchEvent("dragstart", { dataTransfer: dt });
   await page.getByRole("region", { name: /Done/ }).dispatchEvent("drop", { dataTransfer: await page.evaluateHandle(() => new DataTransfer()) });
   // A wrong move would reach the server and the screen after a round trip, so wait before the negative check.
   await page.waitForTimeout(600);
@@ -343,4 +346,24 @@ test("a rename ended by a click elsewhere does not pull the focus back", async (
   await page.keyboard.type("zz");
   await expect(page.getByLabel("Search")).toBeFocused();
   await expect(page.getByLabel("Search")).toHaveValue("zz");
+});
+
+test("a card click does not drop unsaved panel edits, and a quick add clears the filters", async ({ page }) => {
+  await connect(page, `uns-${unique()}`);
+  await createList(page, "Unsaved");
+  await addTask(page, "One");
+  await addTask(page, "Two");
+  await card(page, "One").click();
+  await page.getByLabel("Description").fill("Draft notes");
+  await card(page, "Two").click();
+  await expect(page.getByRole("alert")).toContainText("unsaved changes");
+  await expect(page.getByLabel("Description")).toHaveValue("Draft notes");
+  await page.getByRole("button", { name: "Save task" }).click();
+  await expect(page.getByText("Saved.")).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await page.getByLabel("Search").fill("One");
+  await page.getByLabel("Add a task to To do").fill("Three");
+  await page.keyboard.press("Enter");
+  await expect(card(page, "Three")).toBeVisible();
 });

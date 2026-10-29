@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Button, CloseIcon, IconButton, Input, PresenceChip, Select, Textarea } from "agentic-design/react";
 import { PRINCIPAL_KINDS, type Principal, type PrincipalKind } from "../src/model.js";
 import type { Board, Task, TaskPatch, TasksClient } from "../src/client.js";
@@ -6,13 +6,14 @@ import { nameOf, personOf } from "./people.js";
 import { AgentMark, claimIsLive } from "./BoardView.js";
 import { describe, type Session } from "./session.js";
 
-export function TaskPanel({ client, session, board, task, narrow, onClose, onChanged }: {
+export function TaskPanel({ client, session, board, task, narrow, onDirty, onClose, onChanged }: {
   client: TasksClient;
   session: Session;
   board: Board;
   task: Task;
   /** The panel covers the page, so the Tab key stays inside it. */
   narrow: boolean;
+  onDirty: (dirty: boolean) => void;
   onClose: () => void;
   onChanged: (task: Task) => void;
 }) {
@@ -35,6 +36,10 @@ export function TaskPanel({ client, session, board, task, narrow, onClose, onCha
   const dirty =
     title !== task.title || description !== task.description || labels !== task.labels.join(", ") ||
     dueDate !== (task.dueDate ?? "") || columnId !== task.columnId || JSON.stringify(assignees) !== JSON.stringify(task.assignees);
+  useEffect(() => {
+    onDirty(dirty);
+    return () => onDirty(false);
+  }, [dirty]);
   const setAssignees = (list: Principal[]) => edit({ assignees: list });
   const [assigneeId, setAssigneeId] = useState("");
   const [assigneeKind, setAssigneeKind] = useState("");
