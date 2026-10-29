@@ -281,6 +281,8 @@ function touch(task: Task, actor: Principal, at: string): void {
   task.updatedAt = at;
 }
 
+const NEEDS_OWNER = Symbol("needs owner");
+
 export function createTasks(options: TasksOptions): Tasks {
   const { store } = options;
   const clock = options.now ?? (() => new Date());
@@ -299,8 +301,33 @@ export function createTasks(options: TasksOptions): Tasks {
 
   // An owner can break a claim that another principal holds. A holder who lost
   // access cannot release it, and the owner must not be locked out by that.
+  // The check writes an audit entry, so ask it only when the answer decides the
+  // call. A holder or a task with no claim never needs it, and a refused
+  // non-owner leaves a real denial, not a false one.
   async function isOwner(ctx: PrincipalContext, boardId: string): Promise<boolean> {
     return (await sharing.can(ctx, "admin", boardId)).allowed;
+  }
+
+  // Runs `body` with a lazy owner answer. When `body` needs it first, it throws
+  // NEEDS_OWNER. The answer is then read once, and the transaction runs again.
+  async function withOwner<T>(
+    ctx: PrincipalContext,
+    boardId: string,
+    body: (owner: () => boolean) => Promise<T>,
+  ): Promise<T> {
+    let answer: boolean | undefined;
+    const owner = () => {
+      if (answer === undefined) throw NEEDS_OWNER;
+      return answer;
+    };
+    for (;;) {
+      try {
+        return await body(owner);
+      } catch (error) {
+        if (error !== NEEDS_OWNER) throw error;
+        answer = await isOwner(ctx, boardId);
+      }
+    }
   }
 
   async function authorizeTask(ctx: PrincipalContext, action: Action, taskId: string): Promise<Task> {
@@ -456,14 +483,13 @@ export function createTasks(options: TasksOptions): Tasks {
 
     async closeTask(id, ctx) {
       const checked = await authorizeTask(ctx, "write", id);
-      const owner = await isOwner(ctx, checked.boardId);
       const actor = actorOf(ctx);
-      return store.transaction(async (tx) => {
+      return withOwner(ctx, checked.boardId, (owner) => store.transaction(async (tx) => {
         const task = await requireTask(tx, id);
         requireOpen(task);
         const now = clock();
         const at = now.toISOString();
-        if (!owner && heldByOther(task.claim, actor, now.getTime())) {
+        if (heldByOther(task.claim, actor, now.getTime()) && !owner()) {
           throw new TaskError("CLAIM_HELD", `task ${id} is held by another principal`);
         }
         task.status = "closed";
@@ -472,7 +498,7 @@ export function createTasks(options: TasksOptions): Tasks {
         touch(task, actor, at);
         await putRow(tx, "tasks", task);
         return task;
-      });
+      }));
     },
 
     // The read and the write sit in one transaction. The store checks that the
@@ -508,19 +534,21 @@ export function createTasks(options: TasksOptions): Tasks {
 
     async release(id, ctx) {
       const checked = await authorizeTask(ctx, "write", id);
-      const owner = await isOwner(ctx, checked.boardId);
       const principal = actorOf(ctx);
-      return store.transaction(async (tx) => {
+      return withOwner(ctx, checked.boardId, (owner) => store.transaction(async (tx) => {
         const task = await requireTask(tx, id);
+        if (task.claim === undefined) {
+          throw new TaskError("NOT_HOLDER", `only the holder or an owner can release task ${id}`);
+        }
         const holds = isWellFormed(task.claim) && samePrincipal(task.claim.holder, principal);
-        if (task.claim === undefined || !(holds || owner)) {
+        if (!holds && !owner()) {
           throw new TaskError("NOT_HOLDER", `only the holder or an owner can release task ${id}`);
         }
         delete task.claim;
         touch(task, principal, clock().toISOString());
         await putRow(tx, "tasks", task);
         return task;
-      });
+      }));
     },
 
     async progress(id, note, ctx) {
