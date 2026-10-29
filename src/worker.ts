@@ -248,6 +248,25 @@ export function createApp(resolve: Resolve, auth?: Auth | ((env: Bindings) => Au
     return c.json({ unshared: true });
   });
 
+  api.get("/boards/:boardId/access", async (c) =>
+    c.json(await tasksOf(c).listAccess(c.req.param("boardId"), ctxOf(c))),
+  );
+
+  api.post("/boards/:boardId/invites", async (c) => {
+    const body = await jsonBody<Parameters<Tasks["inviteToBoard"]>[1]>(c);
+    return c.json(await tasksOf(c).inviteToBoard(c.req.param("boardId"), body, ctxOf(c)), 201);
+  });
+
+  api.post("/boards/:boardId/links", async (c) => {
+    const body = await jsonBody<Parameters<Tasks["createBoardLink"]>[1]>(c);
+    return c.json(await tasksOf(c).createBoardLink(c.req.param("boardId"), body, ctxOf(c)), 201);
+  });
+
+  api.delete("/boards/:boardId/links/:linkId", async (c) => {
+    await tasksOf(c).revokeBoardLink(c.req.param("boardId"), c.req.param("linkId"), ctxOf(c));
+    return c.json({ revoked: true });
+  });
+
   api.delete("/boards/:boardId", async (c) => {
     await tasksOf(c).eraseBoard(c.req.param("boardId"), ctxOf(c));
     return c.json({ erased: true });

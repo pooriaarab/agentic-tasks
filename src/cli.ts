@@ -3,7 +3,7 @@ import type { PrincipalContext, Role, Subject } from "agentic-identity";
 import { trustedContext } from "./principal.js";
 import { TaskError, type Principal, type PrincipalKind } from "./model.js";
 import { createFileStore } from "./file-store.js";
-import { createTasks, type Tasks } from "./tasks.js";
+import { createTasks, type InviteInput, type LinkInput, type Tasks } from "./tasks.js";
 import { serveMcp } from "./mcp.js";
 import { VERSION } from "./version.js";
 
@@ -62,6 +62,22 @@ const COMMANDS: Record<string, CommandSpec> = {
     summary: "Take a role away. --subject-kind is human or agent.",
     flags: ["subject-kind"],
   },
+  access: {
+    args: "<board id>",
+    summary: "List the grants, invites, and share links of a board. Needs the owner role.",
+    flags: [],
+  },
+  invite: {
+    args: "<board id> <role>",
+    summary: "Invite by --email (a person) or --handle (an agent). The role is viewer, commenter, or editor.",
+    flags: ["email", "handle", "expires-in-ms"],
+  },
+  link: {
+    args: "<board id> <role>",
+    summary: "Make a share link. The token shows once. --signed-in-only true limits it to signed-in people.",
+    flags: ["signed-in-only", "expires-in-ms"],
+  },
+  unlink: { args: "<board id> <link id>", summary: "Revoke a share link of a board.", flags: [] },
   erase: { args: "<board id>", summary: "Erase a board with its tasks, notes, and grants.", flags: [] },
   delete: { args: "<task id>", summary: "Delete a task and its notes.", flags: [] },
   boards: { args: "", summary: "List the boards you hold a role on.", flags: [] },
@@ -344,6 +360,40 @@ async function runCommand(
         actorFrom(flags),
       );
       return { unshared: true };
+    case "access":
+      return tasks.listAccess(need("board id"), actorFrom(flags));
+    case "invite": {
+      const ttl = one(flags, "expires-in-ms");
+      return tasks.inviteToBoard(
+        need("board id"),
+        {
+          role: need("role") as InviteInput["role"],
+          email: one(flags, "email"),
+          handle: one(flags, "handle"),
+          expiresInMs: ttl === undefined ? undefined : Number(ttl),
+        },
+        actorFrom(flags),
+      );
+    }
+    case "link": {
+      const ttl = one(flags, "expires-in-ms");
+      const signedIn = one(flags, "signed-in-only");
+      if (signedIn !== undefined && signedIn !== "true" && signedIn !== "false") {
+        throw new UsageError("--signed-in-only is true or false");
+      }
+      return tasks.createBoardLink(
+        need("board id"),
+        {
+          role: need("role") as LinkInput["role"],
+          signedInOnly: signedIn === undefined ? undefined : signedIn === "true",
+          expiresInMs: ttl === undefined ? undefined : Number(ttl),
+        },
+        actorFrom(flags),
+      );
+    }
+    case "unlink":
+      await tasks.revokeBoardLink(need("board id"), need("link id"), actorFrom(flags));
+      return { revoked: true };
     case "delete":
       await tasks.deleteTask(need("task id"), actorFrom(flags));
       return { deleted: true };

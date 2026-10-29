@@ -3,10 +3,29 @@
 // a retry of a claim, a note, or a create could apply twice.
 import type { Role, Subject } from "agentic-identity";
 import type { Board, ProgressEntry, Task, TaskErrorCode, TaskStatus } from "./model.js";
-import type { ClaimOptions, MoveTarget, NewTask, TaskPatch, TasksExport } from "./tasks.js";
+import type {
+  BoardAccess,
+  ClaimOptions,
+  InviteInput,
+  LinkInput,
+  MoveTarget,
+  NewTask,
+  TaskPatch,
+  TasksExport,
+} from "./tasks.js";
 
 export type { Board, ProgressEntry, Task, TaskStatus } from "./model.js";
-export type { ClaimOptions, MoveTarget, NewTask, TaskPatch, TasksExport } from "./tasks.js";
+export type {
+  BoardAccess,
+  ClaimOptions,
+  InviteInput,
+  LinkInput,
+  LinkSummary,
+  MoveTarget,
+  NewTask,
+  TaskPatch,
+  TasksExport,
+} from "./tasks.js";
 
 export type MemberKind = Subject["kind"];
 export type BoardRole = Role;
@@ -83,6 +102,14 @@ export interface TasksClient {
   addColumn(boardId: string, name: string, options?: CallOptions): Promise<Board>;
   shareBoard(boardId: string, subject: { kind: MemberKind; id: string }, role: BoardRole, options?: CallOptions): Promise<void>;
   unshareBoard(boardId: string, subject: { kind: MemberKind; id: string }, options?: CallOptions): Promise<void>;
+  // The grants, the invites, and the links of a board. Needs the owner role. An invite shows no
+  // email, and a link shows no token.
+  listAccess(boardId: string, options?: CallOptions): Promise<BoardAccess>;
+  // Invites a person by email or an agent by handle. The role is not owner. Needs the owner role.
+  inviteToBoard(boardId: string, input: InviteInput, options?: CallOptions): Promise<{ id: string }>;
+  // The token shows once, in this reply. Needs the owner role.
+  createBoardLink(boardId: string, input: LinkInput, options?: CallOptions): Promise<{ id: string; token: string }>;
+  revokeBoardLink(boardId: string, linkId: string, options?: CallOptions): Promise<void>;
   eraseBoard(boardId: string, options?: CallOptions): Promise<void>;
   listBoards(options?: CallOptions): Promise<Board[]>;
   exportData(options?: CallOptions): Promise<TasksExport>;
@@ -101,7 +128,7 @@ export interface TasksClient {
 
 // A success reply must have the expected shape, or the call fails. A proxy or a
 // wrong baseUrl can answer 200 with any body.
-type Shape = "board" | "task" | "tasks" | "note" | "notes" | "shared" | "unshared" | "erased" | "deleted" | "boards" | "export";
+type Shape = "board" | "task" | "tasks" | "note" | "notes" | "shared" | "unshared" | "access" | "invite" | "link" | "revoked" | "erased" | "deleted" | "boards" | "export";
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
@@ -126,6 +153,11 @@ const SHAPES: Record<Shape, (v: unknown) => boolean> = {
   notes: (v) => Array.isArray(v) && v.every(SHAPES.note),
   shared: (v) => isObject(v) && v.shared === true,
   unshared: (v) => isObject(v) && v.unshared === true,
+  access: (v) =>
+    isObject(v) && Array.isArray(v.grants) && Array.isArray(v.invites) && Array.isArray(v.links),
+  invite: (v) => hasId(v),
+  link: (v) => hasId(v) && isObject(v) && typeof v.token === "string",
+  revoked: (v) => isObject(v) && v.revoked === true,
   erased: (v) => isObject(v) && v.erased === true,
   deleted: (v) => isObject(v) && v.deleted === true,
   boards: (v) => Array.isArray(v) && v.every(SHAPES.board),
@@ -227,6 +259,12 @@ export function createClient(options: ClientOptions): TasksClient {
     },
     unshareBoard: async (id, subject, o) => {
       await call("DELETE", member(id, subject), undefined, o, "unshared");
+    },
+    listAccess: (id, o) => call("GET", `/boards/${seg(id)}/access`, undefined, o, "access"),
+    inviteToBoard: (id, input, o) => call("POST", `/boards/${seg(id)}/invites`, input, o, "invite"),
+    createBoardLink: (id, input, o) => call("POST", `/boards/${seg(id)}/links`, input, o, "link"),
+    revokeBoardLink: async (id, linkId, o) => {
+      await call("DELETE", `/boards/${seg(id)}/links/${seg(linkId)}`, undefined, o, "revoked");
     },
     eraseBoard: async (id, o) => {
       await call("DELETE", `/boards/${seg(id)}`, undefined, o, "erased");

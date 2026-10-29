@@ -199,6 +199,53 @@ export function createMcpServer(tasks: Tasks): McpServer {
   );
 
   server.tool(
+    "list_access",
+    "List the grants, the invites, and the share links of a board. Needs the owner role. An invite shows no email and a link shows no token.",
+    { boardId: z.string(), principal: actor },
+    async ({ boardId, principal }) => respond(() => tasks.listAccess(boardId, ctx(principal))),
+  );
+
+  server.tool(
+    "create_invite",
+    "Invite a person by email or an agent by handle to a board. Give email or handle, not both. The role is not owner. Needs the owner role.",
+    {
+      boardId: z.string(),
+      role: z.enum(["viewer", "commenter", "editor"]),
+      email: z.string().optional(),
+      handle: z.string().optional(),
+      expiresInMs: z.number().optional(),
+      principal: actor,
+    },
+    async ({ boardId, principal, ...input }) =>
+      respond(() => tasks.inviteToBoard(boardId, input, ctx(principal))),
+  );
+
+  server.tool(
+    "create_link",
+    "Make a share link for a board. The reply holds the token once: it cannot be read again. The role is not owner. Needs the owner role.",
+    {
+      boardId: z.string(),
+      role: z.enum(["viewer", "commenter", "editor"]),
+      signedInOnly: z.boolean().optional(),
+      expiresInMs: z.number().optional(),
+      principal: actor,
+    },
+    async ({ boardId, principal, ...input }) =>
+      respond(() => tasks.createBoardLink(boardId, input, ctx(principal))),
+  );
+
+  server.tool(
+    "revoke_link",
+    "Revoke a share link of a board. Needs the owner role.",
+    { boardId: z.string(), linkId: z.string(), principal: actor },
+    async ({ boardId, linkId, principal }) =>
+      respond(async () => {
+        await tasks.revokeBoardLink(boardId, linkId, ctx(principal));
+        return { revoked: true };
+      }),
+  );
+
+  server.tool(
     "erase_board",
     "Erase a board with its tasks, notes, and grants. Needs the owner role. It cannot be undone.",
     { boardId: z.string(), principal: actor },
