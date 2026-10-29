@@ -19,7 +19,11 @@ export function AgentMark({ task }: { task: Task }) {
   const created = isAgent(task.createdBy);
   const changed = isAgent(task.updatedBy);
   if (!created && !changed) return null;
-  const text = created ? (changed && task.updatedAt !== task.createdAt ? "Agent created and changed" : "Agent created") : "Agent changed";
+  // The API keeps only the last writer. A later change by a person hides an earlier agent
+  // change, so the text says "last changed by an agent", never "changed".
+  const text = created
+    ? changed && task.updatedAt !== task.createdAt ? "Agent created, last changed by an agent" : "Agent created"
+    : "Last changed by an agent";
   return (
     <span className="agent-mark">
       <BotIcon aria-hidden="true" focusable="false" />
@@ -158,7 +162,7 @@ export function BoardView({ client, session, boardId, onLoaded }: {
           <option value="">All columns</option>
           {board.columns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </Select>
-        <Checkbox label="Agent-made only" checked={agentOnly} onChange={(e) => setAgentOnly(e.target.checked)} />
+        <Checkbox label="Created or last changed by an agent" checked={agentOnly} onChange={(e) => setAgentOnly(e.target.checked)} />
         {filtered && <Button variant="ghost" onClick={clear}>Clear filters</Button>}
       </div>
       {tasks.length === 0 ? (

@@ -107,11 +107,14 @@ test("an agent change is marked, and a refused claim shows its code", async ({ p
   const made = await bot.post(`${API}/tasks`, { data: { boardId, title: "Bot task", columnId: board.columns[0].id } });
   const task = await made.json();
   await bot.post(`${API}/tasks/${task.id}/claim`, { data: {} });
+  const mine = await (await human.post(`${API}/tasks`, { data: { boardId, title: "Human task", columnId: board.columns[0].id } })).json();
+  await bot.patch(`${API}/tasks/${mine.id}`, { data: { description: "Rewritten by the bot" } });
 
   await page.reload();
   const card = page.getByRole("button", { name: /Bot task/ });
   await expect(card).toContainText("Agent created");
-  await page.getByLabel("Agent-made only").check();
+  await expect(page.getByRole("button", { name: /Human task/ })).toContainText("Last changed by an agent");
+  await page.getByLabel("Created or last changed by an agent").check();
   await expect(card).toBeVisible();
   await card.click();
   await page.getByRole("button", { name: "Claim", exact: true }).click();

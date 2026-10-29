@@ -123,8 +123,8 @@ What it does:
 - Create a list. The UI adds the columns To do, Doing, and Done.
 - Create, edit, assign, claim, release, and close a task.
 - Show tasks as a board or a list. Filter by text, status, and column, or show
-  only tasks that an agent made.
-- Mark each task that an agent created or changed. The mark is words and an icon.
+  only tasks that an agent created or last changed.
+- Mark each task that an agent created, or that an agent changed last. The mark is words and an icon.
 - Show loading, empty, and error states. A refused call shows its error code.
 
 It works with a keyboard, shows a focus ring, and follows the system light or
@@ -144,6 +144,7 @@ The UI limits:
 - The API has no call that lists lists. The UI remembers the lists that this
   browser opened. Open another list by its id.
 - The session (id, kind, token) stays in `sessionStorage` until the tab closes.
+- The API keeps only the last writer of a task. If a person changes a task after an agent did, the mark for the agent change goes away. An agent that created a task stays marked.
 - The UI does not show progress notes or manage sharing.
 
 ## Develop

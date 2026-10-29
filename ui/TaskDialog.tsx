@@ -65,7 +65,15 @@ export function TaskDialog({ client, session, board, task, onClose, onSaved, onC
           title: title.trim(), description, labels: labelList,
           dueDate: dueDate === "" ? null : dueDate, assignees,
         });
-        if (columnId !== task.columnId) await client.moveTask(task.id, { columnId });
+        if (columnId !== task.columnId) {
+          try {
+            await client.moveTask(task.id, { columnId });
+          } catch (err) {
+            // The edit is saved. Show it behind the dialog, then show the refusal.
+            onChanged(await client.getTask(task.id).catch(() => task));
+            throw err;
+          }
+        }
       }
       onSaved();
     });
@@ -120,7 +128,7 @@ export function TaskDialog({ client, session, board, task, onClose, onSaved, onC
             {assignees.map((a) => (
               <li key={`${a.kind}:${a.id}`} className="row">
                 <PresenceChip entry={personOf(a)} />
-                <Button size="sm" variant="ghost" aria-label={`Remove ${a.id}`}
+                <Button size="sm" variant="ghost" aria-label={`Remove ${nameOf(a.id)}`}
                   onClick={() => setAssignees(assignees.filter((x) => x !== a))}>Remove</Button>
               </li>
             ))}

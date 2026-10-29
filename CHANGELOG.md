@@ -11,7 +11,7 @@ All notable changes to this package are in this file. The format follows
 - A web UI that the Worker serves on `/`, built on `agentic-design` and the typed client.
   It has lists, a board view and a list view, task create, edit, assign, claim, release,
   and close, filters, empty, loading, and error states, and a mark on tasks that an
-  agent made or changed.
+  agent created or last changed.
 - Playwright tests against `wrangler dev`, an axe WCAG 2.2 AA check on each view in
   light and dark, and a screenshot set in `docs/screenshots`.
 
