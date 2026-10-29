@@ -5,7 +5,7 @@
 .filters { display: flex; flex-wrap: wrap; align-items: end; gap: var(--ad-space-3); margin-block: var(--ad-space-4); }
 .columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: var(--ad-space-4); align-items: start; margin-top: var(--ad-space-4); }
 .column { background: var(--ad-color-surface-sunken); border-radius: var(--ad-radius-md); padding: var(--ad-space-3); }
-.column h3 { margin: 0 0 var(--ad-space-3); font-size: var(--ad-font-size-md); }
+.column h2 { margin: 0 0 var(--ad-space-3); font-size: var(--ad-font-size-md); }
 .cards { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--ad-space-2); }
 .card { display: grid; gap: var(--ad-space-1); width: 100%; text-align: start; font: inherit; color: var(--ad-color-text); background: var(--ad-color-surface); border: 1px solid var(--ad-color-border); border-radius: var(--ad-radius-md); padding: var(--ad-space-3); cursor: pointer; }
 .card:hover { background: var(--ad-color-surface-hover); }
@@ -18,3 +18,5 @@
 .dialog-form { display: grid; gap: var(--ad-space-3); min-width: min(26rem, 80vw); }
 .list-links { list-style: none; padding: 0; display: grid; gap: var(--ad-space-2); }
 .link { color: var(--ad-color-accent-text); }
+/* A button that reads as a link, such as "Back to lists": no button face, so the link color keeps its contrast, and 24px tall. */
+button.link { min-height: 24px; padding: 0; border: 0; background: none; font: inherit; text-decoration: underline; cursor: pointer; }
