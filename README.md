@@ -262,18 +262,18 @@ Add this to your Wrangler config. Set the `nodejs_compat` flag. The store adapte
 }
 ```
 
-Create the database in the EU with `npx wrangler d1 create agentic-tasks --location weur`. For `us`, create it with a US location and set `TASKS_REGION` to `us`. The package does not ship the schema. Copy every file in this repo's `migrations/` folder into your `migrations/` folder, then run `npx wrangler d1 migrations apply DB --remote`.
+Create the database in the EU with `npx wrangler d1 create agentic-tasks --location weur`. For `us`, use `--location wnam` or `--location enam`, and set `TASKS_REGION` to `us`. The package does not ship the schema. Copy every file in this repo's `migrations/` folder into your `migrations/` folder, then run `npx wrangler d1 migrations apply DB --remote`.
 
 | Binding or variable | Needed | What it does |
 |---|---|---|
 | `DB` | Yes | The D1 database. Without it every route except `/health` answers 503 `STORE_NOT_CONFIGURED`. |
-| `TASKS_REGION` | Yes | `eu` or `us`, where the database lives. You set it. The Worker does not detect it. Without a valid value every route except `/health` answers 503 `REGION_NOT_CONFIGURED`. The store refuses a query that D1 serves outside this region, or that D1 does not report a region for. With the default credential check, a bearer request answers 503 `STORE_BUSY`, and a retry does not help. Check `TASKS_REGION` against the database location. |
+| `TASKS_REGION` | Yes | `eu` or `us`, where the database lives. You set it. The Worker does not detect it. Without a valid value every route except `/health` answers 503 `REGION_NOT_CONFIGURED`. A query served from outside the region is refused. See the credential notes below. |
 | `TASKS_UNSAFE_LOCAL_TEST_AUTH` | No | `1` trusts the `X-Principal-Id` and `X-Principal-Kind` headers, on loopback requests only. Use it only for local dev and tests. A request that is not on loopback gets 403 `LOCAL_TEST_AUTH_NOT_LOOPBACK`. |
 | `TASKS_UNSAFE_LOCAL_REGION` | No | `1` lets `TASKS_REGION` be `unknown`, because local D1 reports no region. Local dev only. |
 
 Without test auth, the default export reads a bearer credential from the same D1 database.
 Run the `agentic-identity` Worker on that database to issue credentials. A request
-with no valid credential answers 401 `UNAUTHENTICATED`. If the store cannot answer the credential check, the request answers 503 `STORE_BUSY` with `retry-after: 1`. Retry it later. A region mismatch also answers 503 `STORE_BUSY`, and a retry does not help.
+with no valid credential answers 401 `UNAUTHENTICATED`. If the store cannot answer the credential check, the request answers 503 `STORE_BUSY` with `retry-after: 1`, and a retry can succeed. A region mismatch also answers 503 `STORE_BUSY`, but a retry does not help: check `TASKS_REGION` and the database location.
 
 The module also has these named exports:
 
@@ -281,7 +281,7 @@ The module also has these named exports:
 - `tasksOnD1(env)` and `authOnD1(env)` are the default store and credential check on `DB`.
 - `localTestAuth` and `isLoopbackRequest` are the loopback test auth.
 
-To use another store or credential check, call `createApp` yourself. It still needs the `DB` binding and a valid `TASKS_REGION`. Without them it answers 503 before it calls your store. Install `agentic-identity` in your app too, for its types:
+To use another store or credential check, call `createApp` yourself. It still needs the `DB` binding and a valid `TASKS_REGION`. Without them it answers 503 before it calls your store. With your own `auth`, a region mismatch answers 500 `INTERNAL`. Install `agentic-identity` in your app too, for its types:
 
 ```ts
 import { createApp } from "agentic-tasks/worker";
