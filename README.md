@@ -45,6 +45,18 @@ and an id, so a person and an agent with one id are two subjects. The CLI needs
 `--subject-kind`. Erase a board, with its tasks, notes, and grants, with `eraseBoard`,
 `erase`, `erase_board`, or `DELETE /boards/:id`. Only an owner can. Listing tasks needs a `boardId`.
 
+## Lifecycle
+
+- Delete one task and its notes with `deleteTask`, `delete <task id>`, `delete_task`, or
+  `DELETE /tasks/:id`. It needs the editor role. While another principal holds a live
+  claim, only the holder or a board owner can delete.
+- List the boards you hold a role on with `listBoards`, `boards`, `list_boards`, or `GET /boards`.
+- Export your own data with `exportData`, `export`, `export_data`, or `GET /export`. The
+  JSON has each board you hold a role on, your role, the tasks you made, last changed, hold, or
+  are assigned to, and the notes you wrote. A task is the whole task: it names the other
+  people and agents on it and holds text that they wrote. The notes are only yours. Share
+  the file with care. An agent exports its own tasks and notes, from the boards it can reach. The role is the grant of the person or agent at the root of its chain.
+
 ## SDK
 
 `agentic-tasks/client` is a typed client for the Worker HTTP API. It uses only
@@ -68,7 +80,7 @@ try {
   `/api/v1/tasks` after any path prefix.
 - `token` is a bearer credential that the Worker accepts. `fetch` is optional.
 - One method for each route: `createBoard`, `getBoard`, `addColumn`, `shareBoard`,
-  `unshareBoard`, `eraseBoard`, `createTask`, `listTasks`, `getTask`, `updateTask`,
+  `unshareBoard`, `eraseBoard`, `listBoards`, `exportData`, `deleteTask`, `createTask`, `listTasks`, `getTask`, `updateTask`,
   `moveTask`, `claim`, `release`, `closeTask`, `progress`, and `listProgress`.
 - A refused call throws `TasksApiError` with the API error `code` and the HTTP `status`.
   A reply that is not an API error, or a success reply with the wrong shape, has the code `UNKNOWN`.

@@ -7,7 +7,7 @@ import { createTasks, type Tasks } from "./tasks.js";
 import { serveMcp } from "./mcp.js";
 
 const USAGE =
-  "usage: agentic-tasks <board|column|new|get|update|move|claim|progress|release|close|list|share|unshare|erase|mcp> " +
+  "usage: agentic-tasks <board|column|new|get|update|move|claim|progress|release|close|list|share|unshare|erase|delete|boards|export|mcp> " +
   "[args] --as <id> --kind <kind> [--file <path>]";
 
 class UsageError extends Error {}
@@ -182,6 +182,13 @@ async function runCommand(
         actorFrom(flags),
       );
       return { unshared: true };
+    case "delete":
+      await tasks.deleteTask(requirePositional(positionals, 0, "task id"), actorFrom(flags));
+      return { deleted: true };
+    case "boards":
+      return tasks.listBoards(actorFrom(flags));
+    case "export":
+      return tasks.exportData(actorFrom(flags));
     case "erase":
       await tasks.eraseBoard(requirePositional(positionals, 0, "board id"), actorFrom(flags));
       return { erased: true };

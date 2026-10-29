@@ -16,6 +16,7 @@ import {
   SUBJECT_KINDS,
   type Action,
   type Doc,
+  type Grant,
   type PrincipalContext,
   type Query,
   type Role,
@@ -93,6 +94,23 @@ export interface Tasks {
   unshareBoard(boardId: string, subject: Subject, ctx: PrincipalContext): Promise<void>;
   // Erases the board, its tasks and notes, and its grants. Needs the owner role.
   eraseBoard(boardId: string, ctx: PrincipalContext): Promise<void>;
+  // Deletes one task and its notes. Needs the editor role. While another principal
+  // holds a live claim, only the holder or a board owner can delete.
+  deleteTask(id: string, ctx: PrincipalContext): Promise<void>;
+  // The boards the caller holds a role on, oldest first.
+  listBoards(ctx: PrincipalContext): Promise<Board[]>;
+  // Everything the caller's boards hold about the caller, as one JSON document.
+  exportData(ctx: PrincipalContext): Promise<TasksExport>;
+}
+
+export interface TasksExport {
+  exportedAt: string;
+  principal: Principal;
+  // One entry for each board the caller holds a role on. `tasks` are the tasks the
+  // caller made, last changed, holds, or is assigned to. Each is the whole task, so it
+  // names the other principals on it and holds text that others wrote. `notes` are only
+  // the caller's own notes.
+  boards: { board: Board; role: Role; tasks: Task[]; notes: ProgressEntry[] }[];
 }
 
 function invalid(message: string): TaskError {
@@ -179,7 +197,7 @@ function normalizeDueDate(value: unknown): string | null {
   return value;
 }
 
-type Collection = "boards" | "tasks" | "progress" | "counters";
+type Collection = "boards" | "tasks" | "progress" | "counters" | "grants";
 
 // An id that the store would refuse cannot name a row, so it names nothing.
 async function getRow<T>(ops: StoreOps, collection: Collection, id: string): Promise<T | undefined> {
@@ -366,7 +384,76 @@ export function createTasks(options: TasksOptions): Tasks {
     return task;
   }
 
+  // The boards the root of the chain holds a grant on, that the context may read.
+  async function accessibleBoards(ctx: PrincipalContext): Promise<{ board: Board; role: Role }[]> {
+    assertContext(ctx);
+    const root = ctx.chain[0] as { id: string; kind: string };
+    const grants = await listRows<Grant>(store, "grants", { subjectId: root.id, subjectKind: root.kind });
+    const found: { board: Board; role: Role }[] = [];
+    for (const grant of grants) {
+      const board = await getRow<Board>(store, "boards", grant.resourceId);
+      if (board && (await sharing.can(ctx, "read", board.id)).allowed) {
+        found.push({ board, role: grant.role });
+      }
+    }
+    return found.sort((a, b) => (a.board.createdAt < b.board.createdAt ? -1 : a.board.createdAt > b.board.createdAt ? 1 : a.board.id < b.board.id ? -1 : 1));
+  }
+
   return {
+    async listBoards(ctx) {
+      return (await accessibleBoards(ctx)).map((entry) => entry.board);
+    },
+
+    async exportData(ctx) {
+      const me = actorOf(ctx);
+      // A stored row may hold any value. A field that is not a principal is not the caller.
+      const isMe = (p: unknown) => {
+        const candidate = p as Partial<Principal> | null | undefined;
+        return candidate?.id === me.id && candidate?.kind === me.kind;
+      };
+      const involved = (task: Task) =>
+        isMe(task.createdBy) ||
+        isMe(task.updatedBy) ||
+        isMe(task.claim?.holder) ||
+        (Array.isArray(task.assignees) && task.assignees.some(isMe));
+      const boards = [];
+      for (const { board, role } of await accessibleBoards(ctx)) {
+        const all = await listRows<Task>(store, "tasks", { boardId: board.id });
+        const tasks: Task[] = [];
+        const notes: ProgressEntry[] = [];
+        for (const task of all.sort(byPosition)) {
+          // A row with no id would make the note query match every note in the store.
+          if (typeof task.id !== "string" || task.id === "") continue;
+          const mine = (await listRows<ProgressEntry>(store, "progress", { taskId: task.id })).filter(
+            (note) => note.taskId === task.id && isMe(note.by),
+          );
+          notes.push(...mine);
+          if (involved(task)) tasks.push(task);
+        }
+        boards.push({ board, role, tasks, notes });
+      }
+      return { exportedAt: clock().toISOString(), principal: me, boards };
+    },
+
+    async deleteTask(id, ctx) {
+      const checked = await authorizeTask(ctx, "write", id);
+      const actor = actorOf(ctx);
+      await withOwner(ctx, checked.boardId, (owner) => store.transaction(async (tx) => {
+        const task = await requireTask(tx, id);
+        if (heldByOther(task.claim, actor, clock().getTime()) && !owner()) {
+          throw new TaskError("CLAIM_HELD", `task ${id} is held by another principal`);
+        }
+        // A query in a transaction does not see a note that another transaction adds.
+        // The counter does conflict, so a note that races this delete makes it run again.
+        await tx.get("counters", `seq:${id}`);
+        for (const note of await listRows<ProgressEntry>(tx, "progress", { taskId: id })) {
+          await tx.delete("progress", note.id);
+        }
+        await tx.delete("counters", `seq:${id}`);
+        await tx.delete("tasks", id);
+      }));
+    },
+
     async createBoard(input, ctx) {
       assertContext(ctx);
       const title = requireText(input.title, "title");

@@ -90,6 +90,24 @@ describe("createClient against the Worker", () => {
     expect((await refusal(alice.getBoard(board.id))).code).toBe("NOT_FOUND");
   });
 
+  it("deletes a task, lists boards, and exports the caller's data", async () => {
+    const board = await alice.createBoard({ title: "Lifecycle" });
+    await alice.addColumn(board.id, "Todo");
+    const task = await alice.createTask({ boardId: board.id, title: "Doomed" });
+    await alice.progress(task.id, "note");
+    expect((await alice.listBoards()).map((b) => b.id)).toContain(board.id);
+    expect((await bob.listBoards()).map((b) => b.id)).not.toContain(board.id);
+    const data = await alice.exportData();
+    expect(data.principal).toEqual({ id: "alice", kind: "human" });
+    const entry = data.boards.find((e) => e.board.id === board.id);
+    expect(entry?.role).toBe("owner");
+    expect(entry?.tasks.map((t) => t.id)).toEqual([task.id]);
+    expect(entry?.notes.map((n) => n.note)).toEqual(["note"]);
+    expect((await refusal(bob.deleteTask(task.id))).code).toBe("FORBIDDEN");
+    await alice.deleteTask(task.id);
+    expect((await refusal(alice.getTask(task.id))).code).toBe("NOT_FOUND");
+  });
+
   it("throws UNAUTHENTICATED with status 401 for a credential that is not stored", async () => {
     const stranger = createClient({ baseUrl: ORIGIN, token: "aid_not-stored" });
     const error = await refusal(stranger.createBoard({ title: "Nope" }));

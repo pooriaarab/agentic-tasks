@@ -189,6 +189,24 @@ describe("agentic-tasks CLI (built binary)", () => {
     expect(result.stderr).toMatch(/--board/);
   });
 
+  it("deletes a task, lists boards, and exports a person's data", () => {
+    const { boardId, columnId } = makeBoard();
+    const task = JSON.parse(run(["new", boardId, "Doomed", "--column", columnId, ...ALICE]).stdout) as { id: string };
+    run(["progress", task.id, "started", ...ALICE]);
+    const boards = JSON.parse(run(["boards", ...ALICE]).stdout) as { id: string }[];
+    expect(boards.map((b) => b.id)).toEqual([boardId]);
+    expect(JSON.parse(run(["boards", ...BOT]).stdout)).toHaveLength(1);
+    const data = JSON.parse(run(["export", ...ALICE]).stdout) as {
+      boards: { tasks: { id: string }[]; notes: { note: string }[] }[];
+    };
+    expect(data.boards[0]?.tasks.map((t) => t.id)).toEqual([task.id]);
+    expect(data.boards[0]?.notes.map((n) => n.note)).toEqual(["started"]);
+    const stranger = run(["delete", task.id, "--as", "zed", "--kind", "human"]);
+    expect([stranger.code, errorCodeOf(stranger)]).toEqual([1, "FORBIDDEN"]);
+    expect(JSON.parse(run(["delete", task.id, ...ALICE]).stdout)).toEqual({ deleted: true });
+    expect(errorCodeOf(run(["get", task.id, ...ALICE]))).toBe("NOT_FOUND");
+  });
+
   it("prints usage and exits 0 on --help", () => {
     for (const flag of ["--help", "-h", "help"]) {
       const result = spawnSync(process.execPath, [CLI, flag], { encoding: "utf8" });
@@ -340,6 +358,9 @@ describe("agentic-tasks MCP server over stdio (built binary)", () => {
       "list_progress",
       "share_board",
       "unshare_board",
+      "delete_task",
+      "list_boards",
+      "export_data",
     ]) {
       expect(names).toContain(expected);
     }
@@ -385,6 +406,23 @@ describe("agentic-tasks MCP server over stdio (built binary)", () => {
     });
     expect(second.isError).toBe(true);
     expect(textOf(second)).toContain("CLAIM_HELD");
+  });
+
+  it("deletes a task, lists boards, and exports through tool calls", async () => {
+    const alice = { id: "alice", kind: "human" };
+    const board = JSON.parse(textOf(await call("create_board", { title: "Sprint", principal: alice }))) as { id: string };
+    await call("add_column", { boardId: board.id, name: "Todo", principal: alice });
+    const task = JSON.parse(
+      textOf(await call("create_task", { boardId: board.id, title: "Doomed", principal: alice })),
+    ) as { id: string };
+    const boards = JSON.parse(textOf(await call("list_boards", { principal: alice }))) as { id: string }[];
+    expect(boards.map((b) => b.id)).toEqual([board.id]);
+    const data = JSON.parse(textOf(await call("export_data", { principal: alice }))) as { boards: { tasks: unknown[] }[] };
+    expect(data.boards[0]?.tasks).toHaveLength(1);
+    const denied = await call("delete_task", { taskId: task.id, principal: { id: "zed", kind: "human" } });
+    expect(denied.isError).toBe(true);
+    expect(textOf(denied)).toContain("FORBIDDEN");
+    expect(textOf(await call("delete_task", { taskId: task.id, principal: alice }))).toContain("deleted");
   });
 
   it("reports a principal with no role as FORBIDDEN", async () => {

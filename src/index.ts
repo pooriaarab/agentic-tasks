@@ -21,6 +21,7 @@ export type {
   NewTask,
   TaskFilter,
   TaskPatch,
+  TasksExport,
   Tasks,
   TasksOptions,
 } from "./tasks.js";
