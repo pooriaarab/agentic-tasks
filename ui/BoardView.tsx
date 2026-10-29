@@ -177,7 +177,7 @@ export function BoardView({ client, session, boardId, onLoaded }: {
             { value: "list", label: "List", content: listView },
           ]} />
       )}
-      <form className="row" onSubmit={addColumn} noValidate style={{ marginTop: "var(--ad-space-6)" }}>
+      <form className="row" onSubmit={addColumn} noValidate style={{ marginTop: "var(--agd-space-6)" }}>
         <Input label="New column" value={columnName} onChange={(e) => setColumnName(e.target.value)}
           error={columnError} />
         <Button type="submit" variant="secondary">Add column</Button>

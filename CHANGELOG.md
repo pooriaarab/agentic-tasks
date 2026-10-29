@@ -6,6 +6,12 @@ All notable changes to this package are in this file. The format follows
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-29
+
+### Changed
+
+- **BREAKING:** design class prefix is now agd-. The UI reads the `--agd-*` tokens from `agentic-design` ^0.4.0. The old prefix matches EasyList cosmetic rules, so ad blockers hid design-styled controls. Host CSS that sets old-prefix tokens or targets old-prefix classes must use the agd- names instead.
+
 ## [0.8.0] - 2026-10-29
 
 ### Added
