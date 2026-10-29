@@ -45,6 +45,39 @@ and an id, so a person and an agent with one id are two subjects. The CLI needs
 `--subject-kind`. Erase a board, with its tasks, notes, and grants, with `eraseBoard`,
 `erase`, `erase_board`, or `DELETE /boards/:id`. Only an owner can. Listing tasks needs a `boardId`.
 
+## SDK
+
+`agentic-tasks/client` is a typed client for the Worker HTTP API. It uses only
+`fetch`, so it runs in Workers and Node 22, and in a browser on the same origin as the Worker.
+
+```js
+import { createClient, TasksApiError } from "agentic-tasks/client";
+
+const tasks = createClient({ baseUrl: "https://tasks.example.com", token });
+const board = await tasks.createBoard({ title: "Sprint" });
+try {
+  await tasks.getTask(taskId); // read a task before you claim it
+  await tasks.claim(taskId, { ttlMs: 600_000 }, { signal: AbortSignal.timeout(5000) });
+} catch (error) {
+  if (error instanceof TasksApiError) console.error(error.code, error.status);
+  else throw error;
+}
+```
+
+- `baseUrl` is the Worker URL, `http` or `https`, with no query, hash, or credentials. The client adds
+  `/api/v1/tasks` after any path prefix.
+- `token` is a bearer credential that the Worker accepts. `fetch` is optional.
+- One method for each route: `createBoard`, `getBoard`, `addColumn`, `shareBoard`,
+  `unshareBoard`, `eraseBoard`, `createTask`, `listTasks`, `getTask`, `updateTask`,
+  `moveTask`, `claim`, `release`, `closeTask`, `progress`, and `listProgress`.
+- A refused call throws `TasksApiError` with the API error `code` and the HTTP `status`.
+  A reply that is not an API error, or a success reply with the wrong shape, has the code `UNKNOWN`.
+- Each method takes `{ signal }` last. An aborted call rejects with the signal reason: `AbortError`, or `TimeoutError` for `AbortSignal.timeout`.
+  A write that was aborted after it was sent may still have applied. Read the task before you try again.
+- The client does not follow redirects: a 3xx reply fails as `UNKNOWN`.
+- The Worker sends no CORS headers. A browser page can call it only from the same origin.
+- The client never retries. A refused claim stays refused: wait for the holder or the expiry.
+
 ## Planned features
 
 - Boards and lists with columns you name.
@@ -58,7 +91,7 @@ and an id, so a person and an agent with one id are two subjects. The CLI needs
 
 One package gives you each way in:
 
-- **Library and SDK**: `import { ... } from "agentic-tasks"`.
+- **Library and SDK**: `import { ... } from "agentic-tasks"`. The remote client is `agentic-tasks/client`.
 - **CLI**: `npx agentic-tasks --help`.
 - **MCP server**: `npx agentic-tasks mcp`, for Claude Code and other MCP clients.
 - **HTTP API**: a Cloudflare Worker at `/api/v1/tasks`. Read the caution above first.

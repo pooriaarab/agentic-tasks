@@ -19,6 +19,23 @@ const board = await tasks.createBoard({ title: "Sprint" }, me);
 await tasks.shareBoard(board.id, { kind: "agent", id: "agent-1" }, "editor", me);
 ```
 
+## Use the remote client
+
+```js
+import { createClient, TasksApiError } from "agentic-tasks/client";
+
+const tasks = createClient({ baseUrl: "https://tasks.example.com", token });
+try {
+  await tasks.getTask(taskId); // read a task before you claim it
+  await tasks.claim(taskId);
+} catch (error) {
+  if (!(error instanceof TasksApiError)) throw error;
+  // Report every refusal with its code. On CLAIM_HELD, wait for the holder
+  // or the expiry. Do not retry in a loop.
+  console.error(error.code, error.status);
+}
+```
+
 ## Use the CLI
 
 ```sh
