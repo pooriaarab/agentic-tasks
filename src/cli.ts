@@ -69,6 +69,9 @@ const COMMANDS: Record<string, CommandSpec> = {
   mcp: { args: "", summary: "Serve the MCP tools over stdio.", flags: [], principal: false },
 };
 
+const COMMAND_WIDTH =
+  Math.max(...Object.entries(COMMANDS).map(([name, spec]) => `${name} ${spec.args}`.trim().length)) + 2;
+
 const USAGE = [
   `usage: agentic-tasks <command> [args] --as <id> --kind <kind> [--file <path>]`,
   "",
@@ -78,7 +81,7 @@ const USAGE = [
   "",
   "commands:",
   ...Object.entries(COMMANDS).map(
-    ([name, spec]) => `  ${`${name} ${spec.args}`.trim().padEnd(36)}${spec.summary}`,
+    ([name, spec]) => `  ${`${name} ${spec.args}`.trim().padEnd(COMMAND_WIDTH)}${spec.summary}`,
   ),
   "",
   "agentic-tasks <command> --help prints one command. agentic-tasks --version prints the version.",
@@ -312,7 +315,8 @@ async function runCommand(
 }
 
 // Finds the command and a help request. A value that follows a flag is not read
-// as either, so a note that is exactly "-h" stays a note.
+// as either, so a flag value of "-h" stays a value. A word of "-h" or "--help" in
+// an argument position is help.
 function scanForHelp(argv: string[]): { help: boolean; words: string[] } {
   const words: string[] = [];
   let help = false;

@@ -225,6 +225,7 @@ describe("agentic-tasks CLI (built binary)", () => {
 
   it("prints full usage and exits 0 for each command, mcp included", () => {
     const top = spawnSync(process.execPath, [CLI, "--help"], { encoding: "utf8" }).stdout;
+    expect(top).toMatch(/<role> {2}Give a role/);
     for (const name of ["board", "column", "new", "claim", "share", "delete", "boards", "export", "mcp"]) {
       expect(top).toContain(`  ${name}`);
       for (const argv of [[name, "--help"], ["help", name], [name, "-h"]]) {
