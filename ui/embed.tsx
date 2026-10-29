@@ -4,6 +4,7 @@
 import { StrictMode, useCallback, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ThemeProvider, TooltipProvider } from "agentic-design/react";
+import "agentic-design/styles.css";
 import "./ui.css";
 import { createClient, type TasksClient } from "../src/client.js";
 import { PRINCIPAL_KINDS, type PrincipalKind } from "../src/model.js";
@@ -38,10 +39,12 @@ function checkOptions(options: TasksUiOptions): void {
     throw new TypeError(`the task UI needs a principal with a kind (${PRINCIPAL_KINDS.join(", ")}) and an id`);
   }
   if (typeof options.getToken !== "function") throw new TypeError("the task UI needs a getToken function");
+  // createClient checks the base URL. Do it here, so a bad value throws from mount or update.
+  createClient({ baseUrl: options.baseUrl, token: "check" });
 }
 
-/** The task UI. It needs the theme and tooltip providers above it. `mount` adds them. */
-export function TasksUi(options: TasksUiOptions) {
+/** The task UI. `mount` adds the theme and tooltip providers above it. */
+function TasksUi(options: TasksUiOptions) {
   checkOptions(options);
   const { baseUrl, getToken, principal, fetch: fetchImpl } = options;
   const client = useMemo(

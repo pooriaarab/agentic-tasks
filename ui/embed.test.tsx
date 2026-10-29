@@ -64,6 +64,11 @@ describe("mount", () => {
     expect(host.innerHTML).toBe("");
   });
 
+  it.each(["", "not a url", "ftp://tasks.example.com"])("throws for the base URL %j", (baseUrl) => {
+    expect(() => mount(host, options({ baseUrl }))).toThrow(TypeError);
+    expect(host.innerHTML).toBe("");
+  });
+
   it("throws when getToken is missing", () => {
     expect(() => mount(host, options({ getToken: undefined as never }))).toThrow(TypeError);
   });
@@ -95,6 +100,8 @@ describe("mount", () => {
     await act(async () => void (mounted = mount(host, options({ boardId: "b1" }))));
     await settle();
     expect(() => mounted!.update(options({ principal: { id: "x", kind: "bad" as never } }))).toThrow(TypeError);
+    expect(host.querySelector("h1")?.textContent).toBe("Sprint");
+    expect(() => mounted!.update(options({ baseUrl: "" }))).toThrow(TypeError);
     expect(host.querySelector("h1")?.textContent).toBe("Sprint");
     await act(async () => mounted!.update(options()));
     expect(host.querySelector("h1")?.textContent).toBe("Lists");

@@ -2,7 +2,8 @@ import { expect, test } from "@playwright/test";
 import { build } from "esbuild";
 
 // Mounts the built `dist/embed.js` (the agentic-tasks/ui export) in a bare test page.
-// The page and its API calls share the Worker origin. The test auth trusts the principal headers.
+// The page and its API calls share the Worker origin. The test auth trusts the principal headers, not the token,
+// so this spec shows that getToken is called, not that the Worker accepts the token.
 const PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Embed</title></head>
 <body><main><div id="host"></div></main><script type="module" src="/__embed-test.js"></script></body></html>`;
 

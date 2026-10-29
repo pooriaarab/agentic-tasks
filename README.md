@@ -174,8 +174,7 @@ an element, the Worker origin, a function that returns the bearer token, and the
 
 ```ts
 import { mount } from "agentic-tasks/ui";
-import "agentic-design/styles.css";
-import "agentic-tasks/ui.css";
+import "agentic-tasks/ui.css";   // holds the design styles too
 
 const ui = mount(document.getElementById("tasks")!, {
   baseUrl: "https://tasks.example.com",
@@ -190,7 +189,7 @@ ui.unmount();                                                   // remove the UI
 
 The principal needs an `id` and a `kind`. A missing or unknown `kind` throws a `TypeError`. An empty token
 fails the call, and the UI shows the error. The server still checks every write against the token. The UI
-remembers the lists it opened in `localStorage`. `react` and `react-dom` (version 19) are optional peer
+remembers the lists it opened in `localStorage`, under one key for the page origin. It does not separate Workers or principals. `react` and `react-dom` (version 19) are optional peer
 dependencies. The web UI that the Worker serves uses the same components.
 
 ## Develop
