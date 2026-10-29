@@ -224,7 +224,7 @@ await tasks.claim(task.id, ana, { ttlMs: 600_000 });
 ```
 
 - `createTasks({ store, now? })` returns the `Tasks` methods. `store` is any `Store` from `agentic-identity` that passes its contract suite.
-- `createFileStore(path)` is the JSON file adapter.
+- `createFileStore(path, options?)` is the JSON file adapter. `options` are the adapter options of `agentic-identity`.
 - `tasksAccount` has `exportAccount` and `eraseAccount`, for a host that runs account export and erase. See [Lifecycle](#lifecycle).
 - A refused call throws `TaskError`. Its `code` is one of `NOT_FOUND`, `FORBIDDEN`, `INVALID_INPUT`, `CLAIM_HELD`, `NOT_HOLDER`, or `TASK_CLOSED`.
 - `PRINCIPAL_KINDS` lists the kinds: `human`, `agent_of_human`, `agent_of_agent`, `agent`, and `user_token`. `VERSION` is the package version.
@@ -262,12 +262,12 @@ Add this to your Wrangler config. Set the `nodejs_compat` flag. The store adapte
 }
 ```
 
-Create the database in the EU with `npx wrangler d1 create agentic-tasks --location weur`. The package does not ship the schema. Copy every file in this repo's `migrations/` folder into your `migrations/` folder, then run `npx wrangler d1 migrations apply DB --remote`.
+Create the database in the EU with `npx wrangler d1 create agentic-tasks --location weur`. For `us`, create it with a US location and set `TASKS_REGION` to `us`. The package does not ship the schema. Copy every file in this repo's `migrations/` folder into your `migrations/` folder, then run `npx wrangler d1 migrations apply DB --remote`.
 
 | Binding or variable | Needed | What it does |
 |---|---|---|
 | `DB` | Yes | The D1 database. Without it every route except `/health` answers 503 `STORE_NOT_CONFIGURED`. |
-| `TASKS_REGION` | Yes | `eu` or `us`, where the database lives. You set it. The Worker does not detect it. Without a valid value every route except `/health` answers 503 `REGION_NOT_CONFIGURED`. The store refuses a query that D1 serves outside this region, and a query that D1 does not report a region for. |
+| `TASKS_REGION` | Yes | `eu` or `us`, where the database lives. You set it. The Worker does not detect it. Without a valid value every route except `/health` answers 503 `REGION_NOT_CONFIGURED`. The store refuses a query that D1 serves outside this region. It also refuses a query when D1 does not report a region. The Worker then answers 500 `INTERNAL`. |
 | `TASKS_UNSAFE_LOCAL_TEST_AUTH` | No | `1` trusts the `X-Principal-Id` and `X-Principal-Kind` headers, on loopback requests only. Use it only for local dev and tests. A request that is not on loopback gets 403 `LOCAL_TEST_AUTH_NOT_LOOPBACK`. |
 | `TASKS_UNSAFE_LOCAL_REGION` | No | `1` lets `TASKS_REGION` be `unknown`, because local D1 reports no region. Local dev only. |
 
