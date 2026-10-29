@@ -121,7 +121,7 @@ test("an agent change is marked, and a refused claim shows its code", async ({ p
 
 test("loading and error states", async ({ page }) => {
   await connect(page, `lee-${unique()}`);
-  await page.route("**/api/v1/tasks/boards/slow", async (route) => {
+  await page.route(/\/api\/v1\/tasks\/(boards\/slow|tasks\?boardId=slow)/, async (route) => {
     await new Promise((r) => setTimeout(r, 1500));
     await route.continue();
   });
@@ -151,6 +151,10 @@ for (const scheme of ["light", "dark"] as const) {
     await check("lists-empty");
     await createList(page, "Launch plan");
     await check("board-empty");
+    await page.getByRole("button", { name: "New task" }).first().click();
+    await expect(page.getByRole("dialog", { name: "New task" })).toBeVisible();
+    await check("new-task-dialog");
+    await page.keyboard.press("Escape");
     const boardId = boardIdOf(page);
     await addTask(page, "Draft the announcement");
     const bot = await as("writer", "agent");
@@ -163,6 +167,11 @@ for (const scheme of ["light", "dark"] as const) {
     await check("board");
     await page.getByRole("tab", { name: "List" }).click();
     await check("list");
+    await page.getByRole("link", { name: "Lists", exact: true }).click();
+    await expect(page.getByRole("link", { name: "Launch plan" }).last()).toBeVisible();
+    await check("lists");
+    await page.getByRole("link", { name: "Launch plan" }).last().click();
+    await page.getByRole("tab", { name: "List" }).click();
     await page.getByRole("button", { name: /Check the links/ }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
     await check("task-dialog");

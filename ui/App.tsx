@@ -97,8 +97,9 @@ function Lists({ session, lists, setLists, onOpen }: {
     setError(undefined);
     try {
       const board = await client.createBoard({ title: title.trim() });
-      for (const name of DEFAULT_COLUMNS) await client.addColumn(board.id, name);
+      // Save the list first: if a column call fails, the list is still in the sidebar.
       setLists(rememberList({ id: board.id, title: board.title }));
+      for (const name of DEFAULT_COLUMNS) await client.addColumn(board.id, name);
       setTitle("");
       onOpen(board.id);
     } catch (err) {

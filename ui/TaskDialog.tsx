@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Button, Dialog, DialogClose, Input, PresenceChip, Select, Textarea } from "agentic-design/react";
 import { PRINCIPAL_KINDS, type Principal, type PrincipalKind } from "../src/model.js";
 import type { Board, Task, TasksClient } from "../src/client.js";
-import { personOf } from "./people.js";
+import { nameOf, personOf } from "./people.js";
 import { AgentMark, claimIsLive } from "./BoardView.js";
 import { describe, type Session } from "./session.js";
 
@@ -70,7 +70,18 @@ export function TaskDialog({ client, session, board, task, onClose, onSaved, onC
       onSaved();
     });
   };
-  const act = (call: (id: string) => Promise<Task>) => task && run(async () => onChanged(await call(task.id)));
+  // Read the task before each call, and again after a refusal, so the dialog shows the real claim.
+  const act = (call: (id: string) => Promise<Task>) =>
+    task &&
+    run(async () => {
+      try {
+        await client.getTask(task.id);
+        onChanged(await call(task.id));
+      } catch (err) {
+        onChanged(await client.getTask(task.id).catch(() => task));
+        throw err;
+      }
+    });
 
   const live = task !== undefined && claimIsLive(task);
   return (
@@ -129,7 +140,9 @@ export function TaskDialog({ client, session, board, task, onClose, onSaved, onC
             <legend>Claim</legend>
             <p className="meta" role="status">
               {closed ? "This task is closed." : live && task.claim
-                ? `Claimed by ${task.claim.holder.id} until ${new Date(task.claim.expiresAt).toLocaleString()}.`
+                ? `Claimed by ${nameOf(task.claim.holder.id)} until ${
+                  Number.isNaN(Date.parse(task.claim.expiresAt)) ? "an unknown time" : new Date(task.claim.expiresAt).toLocaleString()
+                }.`
                 : "No live claim."}
             </p>
             <div className="row">

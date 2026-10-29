@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { BotIcon, Button, Checkbox, EmptyState, Input, PlusIcon, Select, Tabs } from "agentic-design/react";
 import type { Board, Task } from "../src/client.js";
 import type { TasksClient } from "../src/client.js";
+import { nameOf as personName } from "./people.js";
 import { TaskDialog } from "./TaskDialog.js";
 import { describe, type Session } from "./session.js";
 
@@ -37,8 +38,8 @@ function Card({ task, columnName, onOpen }: { task: Task; columnName?: string; o
           {task.status === "closed" ? "Closed" : "Open"}
           {columnName ? ` · ${columnName}` : ""}
           {task.dueDate ? ` · due ${task.dueDate}` : ""}
-          {claimIsLive(task) && task.claim ? ` · claimed by ${task.claim.holder.id}` : ""}
-          {task.assignees.length > 0 ? ` · assigned to ${task.assignees.map((a) => a.id).join(", ")}` : ""}
+          {claimIsLive(task) && task.claim ? ` · claimed by ${personName(task.claim.holder.id)}` : ""}
+          {task.assignees.length > 0 ? ` · assigned to ${task.assignees.map((a) => personName(a.id)).join(", ")}` : ""}
         </span>
         {task.labels.length > 0 && <span className="meta">Labels: {task.labels.join(", ")}</span>}
       </button>
