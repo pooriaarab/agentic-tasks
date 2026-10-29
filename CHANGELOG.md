@@ -10,9 +10,9 @@ All notable changes to this package are in this file. The format follows
 
 - `agentic-tasks/ui` exports `mount`, which renders the task UI into an element from a base URL and a token callback. `agentic-tasks/ui.css` holds its styles. React is an optional peer dependency.
 
-### Changed
+### Fixed
 
-- The README matches the published package.
+- The README describes only what works. It says the package is on npm, and it lists the features that are not built under "Not yet".
 
 ## [0.5.0] - 2026-10-29
 
