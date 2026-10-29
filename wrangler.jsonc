@@ -20,6 +20,8 @@
   "compatibility_flags": ["nodejs_compat"],
   // No telemetry from any wrangler command in this project.
   "send_metrics": false,
+  // The web UI is built into dist-ui by npm run build. Requests that match no file go to the Worker.
+  "assets": { "directory": "./dist-ui" },
   "vars": { "TASKS_REGION": "eu" },
   "d1_databases": [
     {
