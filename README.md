@@ -193,7 +193,7 @@ One package gives you each way in:
 
 The package has these entries. The build writes each one to `dist/`.
 
-| Entry | What it is | Where it is described |
+| Entry or bin | What it is | Where it is described |
 |---|---|---|
 | `agentic-tasks` | The library: `createTasks`, `createFileStore`, `tasksAccount`, `trustedContext`, types, `TaskError`, `PRINCIPAL_KINDS`, and `VERSION`. | [Library](#library) |
 | `agentic-tasks/client` | A typed client for the Worker HTTP API. | [SDK](#sdk) |
@@ -315,7 +315,9 @@ export default createApp(
 
 ### CLI and MCP
 
-`npx agentic-tasks` runs the CLI, and `npx agentic-tasks mcp` serves the MCP tools over stdio. Both use the store file that `--file` names, then `AGENTIC_TASKS_FILE`, then `./agentic-tasks.json`. An MCP client config:
+`npx agentic-tasks` runs the CLI. `npx agentic-tasks mcp` serves the MCP tools over stdio.
+
+Both use the store file that `--file` names, then `AGENTIC_TASKS_FILE`, then `./agentic-tasks.json`. The relative path is relative to the directory where the client starts the server. An MCP client config:
 
 ```json
 {
