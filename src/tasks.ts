@@ -780,22 +780,40 @@ export function createTasks(options: TasksOptions): Tasks {
 
     async listAccess(boardId, ctx) {
       await authorize(ctx, "admin", boardId);
+      // Every page, so a long list is not cut off.
+      const pages = async <T>(read: (cursor?: string) => Promise<{ items: T[]; nextCursor?: string }>) => {
+        const items: T[] = [];
+        let cursor: string | undefined;
+        do {
+          const page = await read(cursor);
+          items.push(...page.items);
+          cursor = page.nextCursor;
+        } while (cursor !== undefined);
+        return items;
+      };
       const [grants, invites, links] = await shared(async () =>
         Promise.all([
-          sharing.listGrants(ctx, boardId, { limit: 200 }),
-          sharing.listInvites(ctx, boardId, { limit: 200 }),
+          pages(async (cursor) => {
+            const page = await sharing.listGrants(ctx, boardId, { limit: 200, ...(cursor === undefined ? {} : { cursor }) });
+            return { items: page.grants, nextCursor: page.nextCursor };
+          }),
+          pages(async (cursor) => {
+            const page = await sharing.listInvites(ctx, boardId, { limit: 200, ...(cursor === undefined ? {} : { cursor }) });
+            return { items: page.invites, nextCursor: page.nextCursor };
+          }),
           listRows<Record<string, unknown>>(store, "links", { resourceId: boardId }),
         ]),
       );
       return {
-        grants: grants.grants,
-        invites: invites.invites,
+        grants,
+        invites,
         // The token hash stays in the store. Only the fields below leave it.
         links: links.map((link) => ({
           id: String(link.id),
           role: link.role as Role,
           signedInOnly: link.signedInOnly === true,
           ...(typeof link.expiresAt === "number" ? { expiresAt: link.expiresAt } : {}),
+          // A revoke time that is not a time still counts as revoked. It shows as 0.
           ...(link.revokedAt != null ? { revokedAt: typeof link.revokedAt === "number" ? link.revokedAt : 0 } : {}),
         })),
       };
@@ -806,6 +824,9 @@ export function createTasks(options: TasksOptions): Tasks {
       const expiresInMs = requireLifetime(input.expiresInMs);
       if ((input.email === undefined) === (input.handle === undefined)) {
         throw invalid("give an email or a handle, not both");
+      }
+      if (typeof (input.email ?? input.handle) !== "string") {
+        throw invalid("email and handle must be strings");
       }
       await authorize(ctx, "admin", boardId);
       return shared(() =>
@@ -837,6 +858,8 @@ export function createTasks(options: TasksOptions): Tasks {
       await authorize(ctx, "admin", boardId);
       const link = await getRow<{ resourceId?: string }>(store, "links", linkId);
       if (link?.resourceId !== boardId) throw new TaskError("NOT_FOUND", `board ${boardId} has no link ${linkId}`);
+      // A revoked link stays revoked at its first time, and writes no second audit entry.
+      if ((link as { revokedAt?: unknown }).revokedAt != null) return;
       await shared(() => sharing.revokeLink(ctx, linkId));
     },
 

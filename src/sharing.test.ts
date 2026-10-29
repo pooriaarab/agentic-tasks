@@ -60,6 +60,8 @@ describe("board sharing: access, invites, links", () => {
       tasks.inviteToBoard(board.id, { role: "viewer" }, ALICE),
       tasks.inviteToBoard(board.id, { role: "viewer", email: "a@b.co", handle: "x" }, ALICE),
       tasks.inviteToBoard(board.id, { role: "viewer", email: "not-an-email" }, ALICE),
+      tasks.inviteToBoard(board.id, { role: "viewer", email: ["a@b.co"] as never }, ALICE),
+      tasks.inviteToBoard(board.id, { role: "viewer", handle: { x: 1 } as never }, ALICE),
       tasks.inviteToBoard(board.id, { role: "viewer", handle: "x", expiresInMs: -1 }, ALICE),
       tasks.inviteToBoard(board.id, { role: "viewer", handle: "x", expiresInMs: "1" as never }, ALICE),
       tasks.createBoardLink(board.id, { role: "owner" as never }, ALICE),
@@ -79,6 +81,23 @@ describe("board sharing: access, invites, links", () => {
     await tasks.revokeBoardLink(other.id, link.id, ALICE);
     expect((await tasks.listAccess(other.id, ALICE)).links[0]?.revokedAt).toBe(NOW);
   });
+
+  it("keeps the first revoke time when a link is revoked twice", async () => {
+    let now = NOW;
+    const tasks = createTasks({ store: createMemoryStore(), now: () => new Date(now) });
+    const board = await tasks.createBoard({ title: "Sprint" }, ALICE);
+    const link = await tasks.createBoardLink(board.id, { role: "viewer" }, ALICE);
+    await tasks.revokeBoardLink(board.id, link.id, ALICE);
+    now += 5000;
+    await tasks.revokeBoardLink(board.id, link.id, ALICE);
+    expect((await tasks.listAccess(board.id, ALICE)).links[0]?.revokedAt).toBe(NOW);
+  });
+
+  it("lists every invite, past one page", async () => {
+    const { tasks, board } = await setup();
+    for (let n = 0; n < 205; n += 1) await tasks.inviteToBoard(board.id, { role: "viewer", handle: `bot${n}` }, ALICE);
+    expect((await tasks.listAccess(board.id, ALICE)).invites).toHaveLength(205);
+  }, 30_000);
 
   it("refuses an agent that holds no role", async () => {
     const { tasks, board } = await setup();
