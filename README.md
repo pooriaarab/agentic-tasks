@@ -246,10 +246,12 @@ change the theme of the page: set `data-theme` on `<html>` yourself. The UI show
 
 The principal needs an `id` and a `kind`. A missing or unknown `kind` throws a `TypeError`. An empty token
 fails the call, and the UI shows the error. The server still checks every write against the token. The UI
-remembers the lists it opened in `localStorage`, under one key for the page origin. It does not separate Workers or principals.
+remembers the lists it opened in `localStorage`, under one key for the page origin. It does not separate
+Workers or principals.
 
 `react` and `react-dom` (version 19) are optional peer dependencies. Install them to use `agentic-tasks/ui`.
-The CLI, the MCP server, and `agentic-tasks/client` do not need them. The web UI that the Worker serves uses the same components.
+The CLI, the MCP server, and `agentic-tasks/client` do not need them. The web UI that the Worker serves
+uses the same components.
 
 ## Develop
 
