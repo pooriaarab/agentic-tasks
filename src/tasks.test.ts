@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { TaskError, type Claim, type Principal, type Task } from "./model.js";
-import { createMemoryStore, type Store } from "./store.js";
+import { createMemoryStore, type Store } from "agentic-identity";
 import { createFileStore } from "./file-store.js";
 import { createTasks, type Tasks } from "./tasks.js";
 
@@ -81,11 +81,11 @@ describe.each(backends)("claim rules on the %s store", (_name, open) => {
 
   // Writes a claim the API would never write, as a hand-edited file could hold.
   async function writeRawClaim(id: string, claim: Claim): Promise<void> {
-    await h.store.transaction((tx) => {
-      const task = tx.get<Task>("tasks", id);
+    await h.store.transaction(async (tx) => {
+      const task = (await tx.get("tasks", id)) as unknown as Task | null;
       if (!task) throw new Error("fixture task is missing");
-      const corrupt: Task = { ...task, claim };
-      tx.put("tasks", corrupt);
+      const corrupt = { ...task, claim };
+      await tx.put("tasks", id, corrupt as unknown as Record<string, never>);
     });
   }
 
@@ -382,5 +382,30 @@ describe.each(backends)("boards, columns, and tasks on the %s store", (_name, op
     await expect(
       errorCode(h.tasks.updateTask(task.id, { dueDate: "2026-02-30" }, ALICE)),
     ).resolves.toBe("INVALID_INPUT");
+  });
+});
+
+describe("claims across two stores on one file", () => {
+  it("lets exactly one of many parallel claims through", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "agentic-tasks-two-"));
+    try {
+      const file = join(dir, "tasks.json");
+      const one = createTasks({ store: createFileStore(file) });
+      const two = createTasks({ store: createFileStore(file) });
+      const board = await one.createBoard({ title: "Sprint" }, ALICE);
+      await one.addColumn(board.id, "Todo", ALICE);
+      const task = await one.createTask({ boardId: board.id, title: "Write spec" }, ALICE);
+      const claimants = Array.from({ length: 8 }, (_, i): Principal => ({
+        id: `bot-${i}`,
+        kind: "agent_of_human",
+      }));
+      const codes = await Promise.all(
+        claimants.map((who, i) => errorCode((i % 2 === 0 ? one : two).claim(task.id, who))),
+      );
+      expect(codes.filter((code) => code === "NO_ERROR")).toHaveLength(1);
+      expect(codes.filter((code) => code === "CLAIM_HELD")).toHaveLength(7);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

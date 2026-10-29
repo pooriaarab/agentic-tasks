@@ -7,7 +7,8 @@
 
 Task boards where people and agents claim and finish work.
 
-> Status: early. The library, CLI, and MCP server work over a local JSON file.
+> Status: early. The library, CLI, and MCP server use the shared `Store` port
+> from `agentic-identity`. The CLI keeps data in a local JSON file.
 > The HTTP API runs as a Worker, but it has no authentication yet. The package
 > is not on npm yet.
 
@@ -56,6 +57,9 @@ npx wrangler dev --var TASKS_UNSAFE_TRUST_HEADERS:1
 - The Worker keeps state in memory. Each instance has its own tasks and claims,
   so the claim rules do not hold across instances.
 - The JSON file store works on one machine. Do not put the file on a network share.
+- Tasks use any `Store` that passes the `agentic-identity` contract suite. Pass a
+  `Store` to `createTasks`. `createFileStore` is the file adapter. Use
+  `createMemoryStore` from `agentic-identity` in tests.
 - A live claim blocks other claims and closes. Moves, edits, and progress notes
   do not check the claim.
 

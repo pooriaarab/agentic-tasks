@@ -27,19 +27,19 @@ describe("file store", () => {
   it("creates a missing parent directory on the first transaction", async () => {
     const nested = join(dir, "nested", "deeper", "tasks.json");
     const store = createFileStore(nested);
-    await store.transaction((tx) => tx.put("boards", { id: "board-1" }));
-    const saved = JSON.parse(await readFile(nested, "utf8")) as { boards: object };
-    expect(saved.boards).toEqual({ "board-1": { id: "board-1" } });
+    await store.put("boards", "board-1", { id: "board-1" });
+    expect(await store.get("boards", "board-1")).toEqual({ id: "board-1" });
+    expect(JSON.parse(await readFile(nested, "utf8"))).toHaveProperty("tables.boards");
   });
 
   it("removes the temp file and keeps the old state when rename fails", async () => {
     const store = createFileStore(file);
-    await store.transaction((tx) => tx.put("boards", { id: "board-1" }));
+    await store.put("boards", "board-1", { id: "board-1" });
     const before = await readFile(file, "utf8");
 
     vi.mocked(rename).mockRejectedValueOnce(new Error("EXDEV: cross-device link"));
     await expect(
-      store.transaction((tx) => tx.put("boards", { id: "board-2" })),
+      store.put("boards", "board-2", { id: "board-2" }),
     ).rejects.toThrow("EXDEV");
 
     expect(await readFile(file, "utf8")).toBe(before);

@@ -11,9 +11,7 @@ export type {
   TaskErrorCode,
   TaskStatus,
 } from "./model.js";
-export { createMemoryStore } from "./store.js";
 export { createFileStore } from "./file-store.js";
-export type { Collection, Store, Tx } from "./store.js";
 export { createTasks } from "./tasks.js";
 export type {
   ClaimOptions,

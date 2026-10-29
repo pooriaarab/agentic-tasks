@@ -60,6 +60,8 @@ export interface Task {
 export interface ProgressEntry {
   id: string;
   taskId: string;
+  // Counts up from 1 within a task, so entries keep their order when clocks tie.
+  seq: number;
   note: string;
   by: Principal;
   at: string;
