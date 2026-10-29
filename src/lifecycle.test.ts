@@ -108,6 +108,21 @@ describe.each(backends)("task lifecycle on the %s store", (_name, open) => {
     expect(data.boards[0]?.tasks.map((t) => t.id)).toEqual([]);
   });
 
+  it("does not export notes of another board when a task row has no id", async () => {
+    const other = await tasks.createBoard({ title: "Two" }, BOB);
+    await tasks.addColumn(other.id, "Todo", BOB);
+    const secret = (await tasks.createTask({ boardId: other.id, title: "S" }, BOB)).id;
+    await tasks.shareBoard(other.id, { kind: "human", id: "alice" }, "editor", BOB);
+    await tasks.progress(secret, "secret note by alice", ALICE);
+    await tasks.unshareBoard(other.id, { kind: "human", id: "alice" }, BOB);
+    await store.transaction(async (tx) => {
+      const row = (await tx.get("tasks", taskId)) as Record<string, unknown>;
+      await tx.put("tasks", taskId, { ...row, id: undefined } as never);
+    });
+    const data = await tasks.exportData(ALICE);
+    expect(JSON.stringify(data)).not.toContain("secret note by alice");
+  });
+
   it("exports the caller's own data and nobody else's", async () => {
     await tasks.progress(taskId, "alice note", ALICE);
     await tasks.progress(taskId, "bob note", BOB);

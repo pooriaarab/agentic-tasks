@@ -422,8 +422,10 @@ export function createTasks(options: TasksOptions): Tasks {
         const tasks: Task[] = [];
         const notes: ProgressEntry[] = [];
         for (const task of all.sort(byPosition)) {
+          // A row with no id would make the note query match every note in the store.
+          if (typeof task.id !== "string" || task.id === "") continue;
           const mine = (await listRows<ProgressEntry>(store, "progress", { taskId: task.id })).filter(
-            (note) => isMe(note.by),
+            (note) => note.taskId === task.id && isMe(note.by),
           );
           notes.push(...mine);
           if (involved(task)) tasks.push(task);
@@ -441,6 +443,9 @@ export function createTasks(options: TasksOptions): Tasks {
         if (heldByOther(task.claim, actor, clock().getTime()) && !owner()) {
           throw new TaskError("CLAIM_HELD", `task ${id} is held by another principal`);
         }
+        // A query in a transaction does not see a note that another transaction adds.
+        // The counter does conflict, so a note that races this delete makes it run again.
+        await tx.get("counters", `seq:${id}`);
         for (const note of await listRows<ProgressEntry>(tx, "progress", { taskId: id })) {
           await tx.delete("progress", note.id);
         }
