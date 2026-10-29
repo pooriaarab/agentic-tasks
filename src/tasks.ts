@@ -615,11 +615,19 @@ export function createTasks(options: TasksOptions): Tasks {
       await shared(() => sharing.revokeGrant(ctx, boardId, subject));
     },
 
-    // The rows go first and the grants after, so a failed erase can run again:
-    // the owner grant still lets the owner in. A refused deleteResource (too many
-    // owners) leaves the board with no tasks.
+    // The board row goes first, so no task can join during the erase. The grants
+    // go last, so a failed erase can run again: the owner grant still lets the
+    // owner in, and a missing board row does not stop the retry. A refused
+    // deleteResource (too many owners) leaves the board with no tasks.
     async eraseBoard(boardId, ctx) {
-      await authorize(ctx, "admin", boardId);
+      assertContext(ctx);
+      if (!(await sharing.can(ctx, "admin", boardId)).allowed) {
+        if (await getRow<Board>(store, "boards", boardId)) {
+          throw new TaskError("FORBIDDEN", `not allowed to admin board ${boardId}`);
+        }
+        throw new TaskError("NOT_FOUND", `board ${boardId} does not exist`);
+      }
+      await store.delete("boards", boardId);
       const tasksOfBoard = await listRows<Task>(store, "tasks", { boardId });
       for (const task of tasksOfBoard) {
         for (const note of await listRows<ProgressEntry>(store, "progress", { taskId: task.id })) {
@@ -628,7 +636,6 @@ export function createTasks(options: TasksOptions): Tasks {
         await store.delete("tasks", task.id);
       }
       await shared(() => sharing.deleteResource(ctx, boardId));
-      await store.delete("boards", boardId);
     },
   };
 }

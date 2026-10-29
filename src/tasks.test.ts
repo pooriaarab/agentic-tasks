@@ -49,7 +49,6 @@ async function harnessFor(open: Backend[1]): Promise<Harness> {
       const board = await raw.createBoard(input, ctx);
       if (ctx.principalId === ALICE.principalId) {
         await raw.shareBoard(board.id, { kind: "agent", id: "bot-1" }, "editor", ctx);
-        await raw.shareBoard(board.id, { kind: "agent", id: "alice" }, "editor", ctx);
       }
       return board;
     },
@@ -214,6 +213,7 @@ describe.each(backends)("claim rules on the %s store", (_name, open) => {
     const id = await openTask();
     await h.tasks.claim(id, ALICE, { ttlMs: TEN_MINUTES });
     const asAgent = trustedContext("alice", "agent_of_human");
+    await h.tasks.shareBoard((await h.tasks.getTask(id, ALICE)).boardId, { kind: "agent", id: "alice" }, "editor", ALICE);
     await expect(
       errorCode(h.tasks.claim(id, asAgent, { ttlMs: TEN_MINUTES })),
     ).resolves.toBe("CLAIM_HELD");
@@ -582,6 +582,16 @@ describe("board roles", () => {
     for (const subject of [{ id: "carol" }, { kind: "root", id: "carol" }, { kind: "human", id: "" }]) {
       await expect(code(tasks.shareBoard(boardId, subject as never, "viewer", ALICE))).resolves.toBe("INVALID_INPUT");
     }
+  });
+
+  it("finishes an erase that stopped after the board row went", async () => {
+    await tasks.progress(taskId, "started", ALICE);
+    await store.delete("boards", boardId);
+    await expect(code(tasks.eraseBoard(boardId, CAROL))).resolves.toBe("NOT_FOUND");
+    await tasks.eraseBoard(boardId, ALICE);
+    expect((await store.get("tasks", taskId)) ?? null).toBeNull();
+    expect((await store.query("grants", { where: { resourceId: boardId } })).items).toHaveLength(0);
+    await expect(code(tasks.eraseBoard(boardId, ALICE))).resolves.toBe("NOT_FOUND");
   });
 
   it("erases a board with its tasks, notes, and grants", async () => {
