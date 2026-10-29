@@ -16,7 +16,7 @@ All notable changes to this package are in this file. The format follows
 
 ### Added
 
-- Quick add at the foot of each column, inline title edit (F2 or double-click), and drag and drop between columns.
+- Quick add at the foot of each column, inline title edit (F2 or the card menu), and drag and drop between columns.
 - A keyboard and single-pointer way to move a card (WCAG 2.2, 2.5.7): Alt and the left or right arrow, or the card menu.
 - Due date, assignee, claim, and label chips on each card. A date before today on an open task shows as late.
 - `E2E_PORT` sets the port of the browser tests, so parallel runs do not clash.

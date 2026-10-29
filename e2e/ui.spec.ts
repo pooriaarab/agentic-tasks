@@ -250,7 +250,7 @@ test("at 390px wide the board content and the panel fit", async ({ page }) => {
   expect(wide).toEqual([]);
 });
 
-test("rename again, rename from the card menu, a stale panel does not undo a move, and a cancelled drag is forgotten", async ({ page }) => {
+test("rename again, rename from the card menu, a stale panel does not undo a move, and a drop with no task moves nothing", async ({ page }) => {
   await connect(page, `rev-${unique()}`);
   await createList(page, "Review");
   await addTask(page, "Alpha");
@@ -287,4 +287,43 @@ test("rename again, rename from the card menu, a stale panel does not undo a mov
   // A drop that carries no task, such as dropped text, moves nothing.
   await page.getByRole("region", { name: /Done/ }).dispatchEvent("drop", { dataTransfer: await page.evaluateHandle(() => new DataTransfer()) });
   await expect(page.getByRole("region", { name: /Doing/ }).locator("button.card-main", { hasText: "Gamma" })).toBeVisible();
+});
+
+test("a cancelled drag leaves no column highlighted, and Escape keeps unsaved edits", async ({ page }) => {
+  await connect(page, `can-${unique()}`);
+  await createList(page, "Cancel");
+  await addTask(page, "Hold");
+  const doing = page.getByRole("region", { name: /Doing/ });
+  const dt = await page.evaluateHandle(() => new DataTransfer());
+  await card(page, "Hold").dispatchEvent("dragstart", { dataTransfer: dt });
+  await doing.dispatchEvent("dragover", { dataTransfer: dt });
+  await expect(doing).toHaveAttribute("data-over", "true");
+  await card(page, "Hold").dispatchEvent("dragend", { dataTransfer: dt });
+  await expect(doing).not.toHaveAttribute("data-over", "true");
+
+  await card(page, "Hold").click();
+  await page.getByLabel("Description").fill("Keep me");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("complementary", { name: "Task details" })).toBeVisible();
+  await expect(page.getByRole("alert")).toContainText("unsaved changes");
+  await page.getByRole("button", { name: "Save task" }).click();
+  await expect(page.getByText("Saved.")).toBeVisible();
+  await page.getByRole("button", { name: "Assign to me" }).click();
+  await expect(page.getByText("Saved.")).toHaveCount(0);
+});
+
+test("at 390px the Tab key stays inside the open panel", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 800 });
+  await connect(page, `tab-${unique()}`);
+  await createList(page, "Trap");
+  await addTask(page, "Trapped");
+  await card(page, "Trapped").click();
+  const panel = page.getByRole("complementary", { name: "Task details" });
+  await expect(page.getByLabel("Title")).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await page.keyboard.press("Shift+Tab");
+  expect(await panel.evaluate((el) => el.contains(document.activeElement))).toBe(true);
+  await page.getByRole("button", { name: "Save task" }).focus();
+  await page.keyboard.press("Tab");
+  expect(await panel.evaluate((el) => el.contains(document.activeElement))).toBe(true);
 });

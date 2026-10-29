@@ -194,7 +194,7 @@ What it does:
 - Create a list. The UI adds the columns To do, Doing, and Done.
 - Add a task with the quick add field at the foot of a column: type a title, press Enter.
 - Drag a card to another column. Without a pointer, press Alt and the left or right arrow on a card,
-  or use the card menu: "Move to" a column. Press F2 on a card, or double-click it, to rename it in place.
+  or use the card menu: "Move to" a column. Press F2 on a card, or use "Rename" in the card menu, to rename it in place.
 - Open a card to edit it in the side panel: description, labels, due date, column, assignees, and claim.
   A card shows the due date, the assignees, and the claim as small chips. A late due date has its own tone.
 - Edit, assign, claim, release, and close a task.

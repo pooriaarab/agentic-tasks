@@ -111,7 +111,7 @@ function Card({ task, columns, columnName, renaming, onOpen, onMove, onRename, o
       ) : (
         <>
           <button type="button" className="card-main" data-task-id={task.id} onClick={onOpen} onKeyDown={onKeyDown}
-            onDoubleClick={onRename} title="Press F2 to rename. Press Alt and an arrow key to move.">
+            title="Press F2 to rename. Press Alt and an arrow key to move.">
             <span className="card-title">{task.title}</span>
             <AgentMark task={task} />
             {columnName && <span className="meta">{columnName}</span>}
@@ -135,11 +135,17 @@ function Card({ task, columns, columnName, renaming, onOpen, onMove, onRename, o
 // A quick add field at the foot of a column: type a title, press Enter.
 function QuickAdd({ column, onAdd }: { column: { id: string; name: string }; onAdd: (title: string) => Promise<boolean> }) {
   const [title, setTitle] = useState("");
+  const busy = useRef(false);
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     const text = title.trim();
-    if (text === "") return;
-    if (await onAdd(text)) setTitle("");
+    if (text === "" || busy.current) return;
+    busy.current = true;
+    try {
+      if (await onAdd(text)) setTitle("");
+    } finally {
+      busy.current = false;
+    }
   };
   return (
     <form className="quick-add" onSubmit={submit} noValidate>
@@ -186,13 +192,16 @@ export function BoardView({ client, session, boardId, onLoaded }: {
   const [columnName, setColumnName] = useState("");
   const [columnError, setColumnError] = useState<string>();
 
+  const latest = useRef(0);
   const load = useCallback(async () => {
+    const mine = ++latest.current;
     try {
       const [board, tasks] = await Promise.all([client.getBoard(boardId), client.listTasks({ boardId })]);
+      if (mine !== latest.current) return; // A newer load is on its way, so drop this old answer.
       setState({ board, tasks });
       onLoaded(board);
     } catch (err) {
-      setState({ error: describe(err) });
+      if (mine === latest.current) setState({ error: describe(err) });
     }
   }, [client, boardId, onLoaded]);
   useEffect(() => void load(), [client, boardId]);
@@ -235,8 +244,10 @@ export function BoardView({ client, session, boardId, onLoaded }: {
   };
   const quickAdd = (columnId: string) => (title: string) =>
     attempt(() => client.createTask({ boardId: board.id, title, columnId }));
+  // If a filter now hides the card, the focus goes to the first quick add field, not to the page top.
   const focusCard = (id: string) =>
-    requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-task-id="${id}"]`)?.focus());
+    requestAnimationFrame(() =>
+      (document.querySelector<HTMLElement>(`[data-task-id="${id}"]`) ?? document.querySelector<HTMLElement>("[data-quick-add]"))?.focus());
   // A move remounts the card in its new column, so give the focus back and say where it went.
   const move = (task: Task, to: string) => {
     if (task.columnId === to) return;
@@ -365,7 +376,7 @@ export function BoardView({ client, session, boardId, onLoaded }: {
       </form>
       </div>
       {editing !== undefined && (
-        <TaskPanel key={editing.id} client={client} session={session} board={board} task={editing}
+        <TaskPanel key={editing.id} narrow={narrow} client={client} session={session} board={board} task={editing}
           onClose={close} onChanged={(t) => { setState((s) => s && "board" in s ? { ...s, tasks: s.tasks.map((x) => (x.id === t.id ? t : x)) } : s); void load(); }} />
       )}
     </div>

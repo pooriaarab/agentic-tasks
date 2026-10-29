@@ -6,19 +6,25 @@ import { nameOf, personOf } from "./people.js";
 import { AgentMark, claimIsLive } from "./BoardView.js";
 import { describe, type Session } from "./session.js";
 
-export function TaskPanel({ client, session, board, task, onClose, onChanged }: {
+export function TaskPanel({ client, session, board, task, narrow, onClose, onChanged }: {
   client: TasksClient;
   session: Session;
   board: Board;
   task: Task;
+  /** The panel covers the page, so the Tab key stays inside it. */
+  narrow: boolean;
   onClose: () => void;
   onChanged: (task: Task) => void;
 }) {
   // A field shows the task as the server has it until the person edits it. The board can change the
   // task while the panel is open, so a save sends only the fields that were edited.
   type Edits = { title?: string; description?: string; labels?: string; dueDate?: string; columnId?: string; assignees?: Principal[] };
+  const [saved, setSaved] = useState(false);
   const [edits, setEdits] = useState<Edits>({});
-  const edit = (patch: Edits) => setEdits((e) => ({ ...e, ...patch }));
+  const edit = (patch: Edits) => {
+    setSaved(false);
+    setEdits((e) => ({ ...e, ...patch }));
+  };
   const title = edits.title ?? task.title;
   const description = edits.description ?? task.description;
   const labels = edits.labels ?? task.labels.join(", ");
@@ -30,7 +36,6 @@ export function TaskPanel({ client, session, board, task, onClose, onChanged }: 
   const [assigneeKind, setAssigneeKind] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
-  const [saved, setSaved] = useState(false);
   const closed = task.status === "closed";
 
   const run = async (action: () => Promise<void>) => {
@@ -92,8 +97,20 @@ export function TaskPanel({ client, session, board, task, onClose, onChanged }: 
     });
 
   const live = claimIsLive(task);
-  const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "Escape" && !e.defaultPrevented) onClose();
+  const onKeyDown = (e: KeyboardEvent<HTMLElement>) => {
+    if (e.key === "Escape" && !e.defaultPrevented) {
+      // Escape never throws away an edit. The hide button does.
+      if (Object.keys(edits).length > 0) setError("You have unsaved changes. Press Save, or Hide details to discard them.");
+      else onClose();
+    }
+    if (e.key === "Tab" && narrow) {
+      const items = [...e.currentTarget.querySelectorAll<HTMLElement>("button, input, select, textarea, [href]")]
+        .filter((el) => !el.matches(":disabled") && el.offsetParent !== null);
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
+    }
   };
   return (
     <aside className="panel" aria-label="Task details" onKeyDown={onKeyDown}>
