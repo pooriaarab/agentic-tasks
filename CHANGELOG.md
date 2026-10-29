@@ -21,6 +21,14 @@ All notable changes to this package are in this file. The format follows
 - Due date, assignee, claim, and label chips on each card. A date before today on an open task shows as late.
 - `E2E_PORT` sets the port of the browser tests, so parallel runs do not clash.
 
+## [0.10.1] - 2026-10-29
+
+Patch. No change to the API.
+
+### Fixed
+
+- `-V` is a version flag, like `--version` and `-v`. `agentic-tasks -V` prints the version and exits 0, with or without `mcp` before it. Before, `-V` was an unknown command and exited 2.
+
 ## [0.10.0] - 2026-10-29
 
 ### Added

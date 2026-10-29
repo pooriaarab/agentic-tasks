@@ -243,11 +243,11 @@ describe("agentic-tasks CLI (built binary)", { timeout: 30_000 }, () => {
 
   it("prints the version and exits 0", () => {
     const pkg = JSON.parse(readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8")) as { version: string };
-    for (const flag of ["--version", "-v", "version"]) {
+    for (const flag of ["--version", "-V", "-v", "version"]) {
       const result = spawnSync(process.execPath, [CLI, flag], { encoding: "utf8" });
       expect([result.status, result.stdout.trim()]).toEqual([0, pkg.version]);
     }
-    for (const argv of [["mcp", "--version"], ["mcp", "-v"], ["mcp", "version"], ["mcp", "--file", file, "--version"], ["--file", file, "mcp", "-v"]]) {
+    for (const argv of [["mcp", "--version"], ["mcp", "-V"], ["mcp", "-v"], ["mcp", "version"], ["mcp", "--file", file, "--version"], ["--file", file, "mcp", "-V"], ["--file", file, "mcp", "-v"]]) {
       const result = spawnSync(process.execPath, [CLI, ...argv], { encoding: "utf8", input: "", timeout: 10_000 });
       expect([result.status, result.stdout.trim()]).toEqual([0, pkg.version]);
     }

@@ -419,7 +419,7 @@ function scanForHelp(argv: string[]): { help: boolean; version: boolean; words: 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index] as string;
     if (token === "--help" || token === "-h") help = true;
-    else if (token === "--version" || token === "-v") version = true;
+    else if (token === "--version" || token === "-v" || token === "-V") version = true;
     else if (token.startsWith("--")) index += 1;
     else words.push(token);
   }
@@ -431,7 +431,7 @@ async function main(argv: string[]): Promise<number> {
     // Help and version come before every other check, so they work with no --as and no store.
     // `mcp --version` answers before the server starts.
     const { help, version, words } = scanForHelp(argv);
-    if (argv[0] === "version" || (words[0] === "mcp" && words[1] === "version") || (version && !help && (argv[0] === "--version" || argv[0] === "-v" || words[0] === "mcp"))) {
+    if (argv[0] === "version" || (words[0] === "mcp" && words[1] === "version") || (version && !help && (argv[0] === "--version" || argv[0] === "-v" || argv[0] === "-V" || words[0] === "mcp"))) {
       process.stdout.write(`${VERSION}\n`);
       return 0;
     }
