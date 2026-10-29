@@ -198,7 +198,7 @@ The package has these entries. The build writes each one to `dist/`.
 | `agentic-tasks` | The library: `createTasks`, `createFileStore`, `tasksAccount`, `trustedContext`, types, `TaskError`, `PRINCIPAL_KINDS`, and `VERSION`. | [Library](#library) |
 | `agentic-tasks/client` | A typed client for the Worker HTTP API. | [SDK](#sdk) |
 | `agentic-tasks/worker` | The HTTP API as a Hono app for a Cloudflare Worker. | [Worker](#worker) |
-| `agentic-tasks/ui` | `mount`, which renders the task UI in your page, and its option types. | [Mount the UI](#mount-the-ui-in-your-app) |
+| `agentic-tasks/ui` | `mount`, which renders the task UI in your page, with its option types and the `TasksClient` type. |
 | `agentic-tasks/ui.css` | The styles for `agentic-tasks/ui`. | [Mount the UI](#mount-the-ui-in-your-app) |
 | `agentic-tasks` (bin, `dist/cli.js`) | The CLI. `agentic-tasks mcp` serves the MCP tools. | [CLI and MCP](#cli-and-mcp) |
 
@@ -267,13 +267,13 @@ Create the database in the EU with `npx wrangler d1 create agentic-tasks --locat
 | Binding or variable | Needed | What it does |
 |---|---|---|
 | `DB` | Yes | The D1 database. Without it every route under `/api/v1/tasks` except `health` answers 503 `STORE_NOT_CONFIGURED`. |
-| `TASKS_REGION` | Yes | `eu` or `us`, where the database lives. You set it. The Worker does not detect it. Without a valid value every route under `/api/v1/tasks` except `health` answers 503 `REGION_NOT_CONFIGURED`. The store refuses a query that D1 serves from outside the region. See the credential notes below. |
+| `TASKS_REGION` | Yes | `eu` or `us`, where the database lives. You set it. The Worker does not detect it. With `DB` bound and no valid value, every route under `/api/v1/tasks` except `health` answers 503 `REGION_NOT_CONFIGURED`. See the credential notes for a mismatch. |
 | `TASKS_UNSAFE_LOCAL_TEST_AUTH` | No | `1` trusts the `X-Principal-Id` and `X-Principal-Kind` headers, on loopback requests only. Use it only for local dev and tests. A request that is not on loopback gets 403 `LOCAL_TEST_AUTH_NOT_LOOPBACK`. |
 | `TASKS_UNSAFE_LOCAL_REGION` | No | `1` lets `TASKS_REGION` be `unknown`, because local D1 reports no region. Local dev only. |
 
 Without test auth, the default export reads a bearer credential from the same D1 database.
 Run the `agentic-identity` Worker on that database to issue credentials. A request
-with no valid credential answers 401 `UNAUTHENTICATED`. If the store cannot answer the credential check, the request answers 503 `STORE_BUSY` with `retry-after: 1`, and a retry can succeed. A region mismatch also answers 503 `STORE_BUSY`, but a retry does not help: check `TASKS_REGION` and the database location.
+with no valid credential answers 401 `UNAUTHENTICATED`. If the store cannot answer the credential check, the request answers 503 `STORE_BUSY` with `retry-after: 1`, and a retry can succeed. A request with a credential gets the same 503 on a region mismatch, but a retry does not help: check `TASKS_REGION` and the database location. A request with no credential gets 401 and never reads the store.
 
 The module also has these named exports:
 
@@ -281,7 +281,7 @@ The module also has these named exports:
 - `tasksOnD1(env)` and `authOnD1(env)` are the default store and credential check on `DB`.
 - `localTestAuth` and `isLoopbackRequest` are the loopback test auth.
 
-To use another store or credential check, call `createApp` yourself. It still needs the `DB` binding and a valid `TASKS_REGION`. Without them it answers 503 before it calls your store. With your own `auth` and a D1 store, a region mismatch answers 500 `INTERNAL`. Install `agentic-identity` in your app too, for its types:
+To use another store or credential check, call `createApp` yourself. It still needs the `DB` binding and a valid `TASKS_REGION`. Without them it answers 503 before it calls your store. With your own `auth` and a D1 store, a region mismatch answers 500 `INTERNAL`. Install `agentic-identity` `^0.6.0` in your app too, the version this package uses, for its types:
 
 ```ts
 import { createApp } from "agentic-tasks/worker";
