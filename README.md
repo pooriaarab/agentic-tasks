@@ -23,6 +23,38 @@ Task boards where people and agents claim and finish work.
 > your network can forge them. Use it for local dev and tests only. `TASKS_UNSAFE_LOCAL_REGION=1` skips the
 > region check of the database. Use it for local dev only.
 
+## Install and quick start
+
+Node 22 or later. Install the package, or run it with `npx`:
+
+```sh
+npm install agentic-tasks
+```
+
+Make a board, add a task, claim it, and finish it. The data goes to `./agentic-tasks.json`.
+Every command needs `--as` and `--kind`. The kind is never defaulted.
+
+```sh
+alias at="npx agentic-tasks"
+at board "Sprint" --columns "Todo,Doing,Done" --as ana --kind human
+```
+
+The output is the board as JSON. Copy its `id` and the `id` of the first column:
+
+```sh
+at new <board id> "Write the spec" --column <column id> --as ana --kind human
+at claim <task id> --ttl-ms 600000 --as ana --kind human
+at progress <task id> "Draft is done" --as ana --kind human
+at close <task id> --as ana --kind human
+at boards --as ana --kind human
+at export --as ana --kind human
+```
+
+`board` also takes the title as `--title Sprint`. A flag or argument that a command does
+not know fails with exit code 2. `at --help` lists the commands, `at <command> --help`
+shows one command, and `at --version` prints the version. Use `--file <path>` or
+`AGENTIC_TASKS_FILE` to pick another store file.
+
 ## Access
 
 Every call has a principal from `agentic-identity`: who acts, the chain it acts
@@ -128,7 +160,7 @@ npm run deploy:demo
 One package gives you each way in:
 
 - **Library and SDK**: `import { ... } from "agentic-tasks"`. The remote client is `agentic-tasks/client`.
-- **CLI**: `npx agentic-tasks --help`.
+- **CLI**: `npx agentic-tasks --help`. See the quick start above.
 - **MCP server**: `npx agentic-tasks mcp`, for Claude Code and other MCP clients.
 - **HTTP API**: a Cloudflare Worker at `/api/v1/tasks`. Read the caution above first.
 - **Web UI**: a small app served by the same Worker.

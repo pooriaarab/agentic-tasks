@@ -9,6 +9,12 @@ All notable changes to this package are in this file. The format follows
 ### Added
 
 - `deleteTask`, `listBoards`, and `exportData` on the SDK and the client. The CLI has `delete`, `boards`, and `export`. MCP has `delete_task`, `list_boards`, and `export_data`. The HTTP API has `DELETE /tasks/:id`, `GET /boards`, and `GET /export`.
+- An install and CLI quick start in the README.
+
+### Changed
+
+- `agentic-tasks --version` prints the version and exits 0. `--help` prints the full usage and exits 0, at the top level, for each command, and for `mcp`.
+- `board` and `new` take the title as an argument or as `--title`. A command refuses an unknown flag or an extra argument with exit code 2, so `board new --title Sprint` no longer makes a board named "new".
 
 ## [0.6.0] - 2026-10-29
 

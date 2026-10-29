@@ -215,6 +215,49 @@ describe("agentic-tasks CLI (built binary)", () => {
     }
   });
 
+  it("prints the version and exits 0", () => {
+    const pkg = JSON.parse(readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8")) as { version: string };
+    for (const flag of ["--version", "-v", "version"]) {
+      const result = spawnSync(process.execPath, [CLI, flag], { encoding: "utf8" });
+      expect([result.status, result.stdout.trim()]).toEqual([0, pkg.version]);
+    }
+  });
+
+  it("prints full usage and exits 0 for each command, mcp included", () => {
+    const top = spawnSync(process.execPath, [CLI, "--help"], { encoding: "utf8" }).stdout;
+    for (const name of ["board", "column", "new", "claim", "share", "delete", "boards", "export", "mcp"]) {
+      expect(top).toContain(`  ${name}`);
+      for (const argv of [[name, "--help"], ["help", name], [name, "-h"]]) {
+        const result = spawnSync(process.execPath, [CLI, ...argv], { encoding: "utf8", timeout: 20_000 });
+        expect(result.status).toBe(0);
+        expect(result.stdout).toContain(`usage: agentic-tasks ${name}`);
+      }
+    }
+    const bad = spawnSync(process.execPath, [CLI, "nope", "--help"], { encoding: "utf8" });
+    expect(bad.status).toBe(2);
+  });
+
+  it("takes the board title as an argument or as --title", () => {
+    for (const args of [["board", "Sprint"], ["board", "--title", "Sprint"]]) {
+      const board = JSON.parse(run([...args, ...ALICE]).stdout) as { title: string };
+      expect(board.title).toBe("Sprint");
+    }
+  });
+
+  it("rejects an unknown argument with exit 2 and makes nothing", () => {
+    for (const args of [
+      ["board", "new", "--title", "Sprint"],
+      ["board", "Sprint", "--colums", "Todo"],
+      ["board", "Sprint", "extra"],
+      ["boards", "stray"],
+      ["board"],
+    ]) {
+      const result = run([...args, ...ALICE]);
+      expect([args.join(" "), result.code]).toEqual([args.join(" "), 2]);
+    }
+    expect(JSON.parse(run(["boards", ...ALICE]).stdout)).toEqual([]);
+  });
+
   it("exits 2 with a usage message on an unknown command", () => {
     const result = run(["teleport"]);
     expect(result.code).toBe(2);
