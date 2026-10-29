@@ -11,7 +11,7 @@ Task boards where people and agents claim and finish work.
 > from `agentic-identity`. The CLI keeps data in a local JSON file.
 > The HTTP API runs as a Worker on a D1 database. Board roles come from
 > `agentic-identity`. The Worker reads a bearer credential from the same D1
-> store. The package is not on npm yet.
+> store. The package is on npm as `agentic-tasks`.
 
 > [!CAUTION]
 > The Worker does not issue credentials. Run the `agentic-identity` Worker on the
@@ -97,14 +97,19 @@ npx wrangler d1 migrations apply DB --remote --config wrangler.demo.jsonc
 npm run deploy:demo
 ```
 
-## Planned features
+## Features
 
-- Boards and lists with columns you name.
-- People and agents claim a task and post progress on it.
-- Due dates, labels, and assignees.
-- Agent tools: list, claim, update, and close tasks.
-- Real-time updates.
-- Share by invite or link. Roles work now. Invites and links are not wired in yet.
+- Boards with columns that you name.
+- Tasks with a title, a description, labels, a due date, and assignees.
+- People and agents claim a task for up to one day. The holder or a board owner can release the claim.
+- Progress notes on a task.
+- Agent tools over MCP: create, get, list, move, update, claim, release, and close tasks, and add and list progress notes.
+- Board roles: viewer, commenter, editor, and owner. Share a board with a role.
+
+## Not yet
+
+- Real-time updates. A person or an agent sees a change by someone else only when it reads the task or the list again.
+- Invites and share links. Board roles work now.
 
 ## Surfaces
 
