@@ -131,6 +131,9 @@ export function createApp(resolve: Resolve, auth?: Auth | ((env: Bindings) => Au
   const api = new Hono<{ Bindings: Bindings; Variables: { ctx: PrincipalContext } }>().basePath(
     "/api/v1/tasks",
   );
+  // Open on purpose: it names no data and checks no store.
+  api.get("/health", (c) => c.json({ ok: true }));
+
   api.use("*", async (c, next) => {
     if (c.env.DB === undefined) {
       return c.json(notConfigured("STORE_NOT_CONFIGURED", "Bind a D1 database as DB."), 503);

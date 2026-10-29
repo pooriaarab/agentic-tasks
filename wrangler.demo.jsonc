@@ -1,0 +1,22 @@
+{
+  // Demo Worker on workers.dev. It runs the same code as wrangler.jsonc, on its
+  // own D1 database in the EU. Redeploy: npm run deploy:demo (see README).
+  // The demo holds no credentials. Every call to the API but /health answers 401
+  // until the identity Worker issues a key on this database.
+  "name": "agentic-tasks-demo",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-01-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "send_metrics": false,
+  "assets": { "directory": "./dist-ui" },
+  "vars": { "TASKS_REGION": "eu" },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "agentic-tasks-demo",
+      "database_id": "851460d6-e353-4083-8964-e24775d227d9",
+      "migrations_dir": "migrations"
+    }
+  ]
+}

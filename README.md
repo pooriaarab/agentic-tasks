@@ -78,6 +78,25 @@ try {
 - The Worker sends no CORS headers. A browser page can call it only from the same origin.
 - The client never retries. A refused claim stays refused: wait for the holder or the expiry.
 
+## Live demo
+
+A demo Worker runs at <https://agentic-tasks-demo.hello-fd1.workers.dev>.
+`GET /api/v1/tasks/health` answers 200. The web UI loads on `/`.
+The demo holds no credentials, so any other API call answers 401. It uses its
+own D1 database in the EU. It is a staging demo. Do not store real data in it.
+
+Redeploy it with your own Cloudflare account. Log in with `wrangler login`, or
+export `CLOUDFLARE_API_TOKEN` in your shell. Do not put a token in the repo or
+in CI.
+
+```sh
+npx wrangler d1 create agentic-tasks-demo --location weur
+# Put the database id in wrangler.demo.jsonc, then:
+export WRANGLER_SEND_METRICS=false
+npx wrangler d1 migrations apply DB --remote --config wrangler.demo.jsonc
+npm run deploy:demo
+```
+
 ## Planned features
 
 - Boards and lists with columns you name.
