@@ -110,8 +110,8 @@ function barrier(n: number): () => Promise<void> {
   };
 }
 
-const DEMOTE = (t: Tasks, board: string, who: string, by: typeof ALICE) => t.shareBoard(board, who, "editor", by);
-const UNSHARE = (t: Tasks, board: string, who: string, by: typeof ALICE) => t.unshareBoard(board, who, by);
+const DEMOTE = (t: Tasks, board: string, who: string, by: typeof ALICE) => t.shareBoard(board, { kind: "human", id: who }, "editor", by);
+const UNSHARE = (t: Tasks, board: string, who: string, by: typeof ALICE) => t.unshareBoard(board, { kind: "human", id: who }, by);
 type Move = typeof DEMOTE;
 
 describe.each(backends)("owner removal on the %s store", (name, open) => {
@@ -127,7 +127,7 @@ describe.each(backends)("owner removal on the %s store", (name, open) => {
       const tasksTwo = createTasks({ store: gated(two, gate) });
       for (let round = 0; round < (ROUNDS[name] ?? 25); round += 1) {
         const board = await tasksOne.createBoard({ title: "Sprint" }, ALICE);
-        await tasksOne.shareBoard(board.id, "bob", "owner", ALICE);
+        await tasksOne.shareBoard(board.id, { kind: "human", id: "bob" }, "owner", ALICE);
         gate.wait = barrier(2);
         const results = await Promise.allSettled([
           retried(() => first(tasksOne, board.id, "bob", ALICE)),

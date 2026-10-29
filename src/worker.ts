@@ -8,6 +8,7 @@ import {
   type Region,
   type Role,
   type Store,
+  type Subject,
 } from "agentic-identity";
 import { trustedContext } from "./principal.js";
 import { createD1Store, type D1Like } from "agentic-identity/cloudflare";
@@ -199,20 +200,29 @@ export function createApp(resolve: Resolve, auth?: Auth | ((env: Bindings) => Au
     );
   });
 
-  api.put("/boards/:boardId/members/:subjectId", async (c) => {
+  api.put("/boards/:boardId/members/:kind/:subjectId", async (c) => {
     const body = await jsonBody<{ role?: Role }>(c);
     await tasksOf(c).shareBoard(
       c.req.param("boardId"),
-      c.req.param("subjectId"),
+      { kind: c.req.param("kind") as Subject["kind"], id: c.req.param("subjectId") },
       body.role as Role,
       ctxOf(c),
     );
     return c.json({ shared: true });
   });
 
-  api.delete("/boards/:boardId/members/:subjectId", async (c) => {
-    await tasksOf(c).unshareBoard(c.req.param("boardId"), c.req.param("subjectId"), ctxOf(c));
+  api.delete("/boards/:boardId/members/:kind/:subjectId", async (c) => {
+    await tasksOf(c).unshareBoard(
+      c.req.param("boardId"),
+      { kind: c.req.param("kind") as Subject["kind"], id: c.req.param("subjectId") },
+      ctxOf(c),
+    );
     return c.json({ unshared: true });
+  });
+
+  api.delete("/boards/:boardId", async (c) => {
+    await tasksOf(c).eraseBoard(c.req.param("boardId"), ctxOf(c));
+    return c.json({ erased: true });
   });
 
   api.post("/tasks", async (c) => {

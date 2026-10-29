@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import type { PrincipalContext, Role } from "agentic-identity";
+import type { PrincipalContext, Role, Subject } from "agentic-identity";
 import { trustedContext } from "./principal.js";
 import { TaskError, type Principal, type PrincipalKind } from "./model.js";
 import { createFileStore } from "./file-store.js";
@@ -7,7 +7,7 @@ import { createTasks, type Tasks } from "./tasks.js";
 import { serveMcp } from "./mcp.js";
 
 const USAGE =
-  "usage: agentic-tasks <board|column|new|get|update|move|claim|progress|release|close|list|share|unshare|mcp> " +
+  "usage: agentic-tasks <board|column|new|get|update|move|claim|progress|release|close|list|share|unshare|erase|mcp> " +
   "[args] --as <id> --kind <kind> [--file <path>]";
 
 class UsageError extends Error {}
@@ -65,6 +65,12 @@ function assignees(flags: Map<string, string[]>): Principal[] | undefined {
     const [id, kind] = value.split(":");
     return { id: id ?? "", kind: (kind ?? "") as PrincipalKind };
   });
+}
+
+function subjectFrom(flags: Map<string, string[]>, positionals: string[]): Subject {
+  const kind = one(flags, "subject-kind");
+  if (kind === undefined) throw new UsageError("missing --subject-kind human|agent");
+  return { kind: kind as Subject["kind"], id: requirePositional(positionals, 1, "subject id") };
 }
 
 function requirePositional(positionals: string[], index: number, label: string): string {
@@ -164,7 +170,7 @@ async function runCommand(
     case "share":
       await tasks.shareBoard(
         requirePositional(positionals, 0, "board id"),
-        requirePositional(positionals, 1, "subject id"),
+        subjectFrom(flags, positionals),
         requirePositional(positionals, 2, "role") as Role,
         actorFrom(flags),
       );
@@ -172,10 +178,13 @@ async function runCommand(
     case "unshare":
       await tasks.unshareBoard(
         requirePositional(positionals, 0, "board id"),
-        requirePositional(positionals, 1, "subject id"),
+        subjectFrom(flags, positionals),
         actorFrom(flags),
       );
       return { unshared: true };
+    case "erase":
+      await tasks.eraseBoard(requirePositional(positionals, 0, "board id"), actorFrom(flags));
+      return { erased: true };
     default:
       throw new UsageError(`unknown command ${args.command ?? ""}`.trim());
   }

@@ -48,7 +48,7 @@ describe("agentic-tasks CLI (built binary)", () => {
     const board = JSON.parse(
       run(["board", "Sprint", "--columns", "Todo,Doing", ...ALICE]).stdout,
     ) as { id: string; columns: { id: string }[] };
-    run(["share", board.id, "bot-1", "editor", ...ALICE]);
+    run(["share", board.id, "bot-1", "editor", "--subject-kind", "agent", ...ALICE]);
     return { boardId: board.id, columnId: board.columns[0]!.id };
   }
 
@@ -173,13 +173,13 @@ describe("agentic-tasks CLI (built binary)", () => {
 
   it("shares a board by role and takes the role away on unshare", () => {
     const board = JSON.parse(run(["board", "Sprint", "--columns", "Todo", ...ALICE]).stdout) as { id: string };
-    expect(run(["share", board.id, "bot-1", "viewer", ...ALICE]).code).toBe(0);
+    expect(run(["share", board.id, "bot-1", "viewer", "--subject-kind", "agent", ...ALICE]).code).toBe(0);
     expect(run(["list", "--board", board.id, ...BOT]).code).toBe(0);
     expect(errorCodeOf(run(["new", board.id, "Write spec", ...BOT]))).toBe("FORBIDDEN");
-    expect(run(["share", board.id, "bot-1", "editor", ...ALICE]).code).toBe(0);
+    expect(run(["share", board.id, "bot-1", "editor", "--subject-kind", "agent", ...ALICE]).code).toBe(0);
     expect(run(["new", board.id, "Write spec", ...BOT]).code).toBe(0);
-    expect(errorCodeOf(run(["share", board.id, "x", "viewer", ...BOT]))).toBe("FORBIDDEN");
-    expect(run(["unshare", board.id, "bot-1", ...ALICE]).code).toBe(0);
+    expect(errorCodeOf(run(["share", board.id, "x", "viewer", "--subject-kind", "agent", ...BOT]))).toBe("FORBIDDEN");
+    expect(run(["unshare", board.id, "bot-1", "--subject-kind", "agent", ...ALICE]).code).toBe(0);
     expect(errorCodeOf(run(["list", "--board", board.id, ...BOT]))).toBe("FORBIDDEN");
   });
 
@@ -231,7 +231,7 @@ describe("agentic-tasks lock file (built binary)", () => {
     const board = JSON.parse(
       run(["board", "Sprint", "--columns", "Todo", ...ALICE]).stdout,
     ) as { id: string; columns: { id: string }[] };
-    run(["share", board.id, "bot-1", "editor", ...ALICE]);
+    run(["share", board.id, "bot-1", "editor", "--subject-kind", "agent", ...ALICE]);
     const task = JSON.parse(run(["new", board.id, "Write spec", ...ALICE]).stdout) as {
       id: string;
     };
@@ -358,6 +358,7 @@ describe("agentic-tasks MCP server over stdio (built binary)", () => {
 
     const shared = await call("share_board", {
       boardId: board.id,
+      subjectKind: "agent",
       subjectId: "bot-1",
       role: "editor",
       principal: { id: "alice", kind: "human" },

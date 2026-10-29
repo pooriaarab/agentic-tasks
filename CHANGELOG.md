@@ -11,6 +11,16 @@ All notable changes to this package are in this file. The format follows
   trusts principal headers for local tests, and refuses a request that does not
   name loopback. It reads headers, not the socket: keep `wrangler dev` on loopback.
 
+- Uses `agentic-identity` 0.4.0. A grant is keyed on kind (`human` or `agent`) and id.
+  Breaking: `shareBoard` and `unshareBoard` take a subject `{ kind, id }`, the CLI
+  `share` and `unshare` need `--subject-kind`, the MCP tools take `subjectKind`, and
+  the member route is `/boards/:id/members/:kind/:subjectId`. A grant from 0.3 is
+  not honored until `migrateGrants` from `agentic-identity` runs on the store.
+- A trusted local context holds roles as `human` (kinds `human` and `user_token`)
+  or as `agent` (every agent kind).
+- Adds `eraseBoard`, `erase`, `erase_board`, and `DELETE /boards/:id`. They remove the
+  board, its tasks and notes, and call `deleteResource` for its grants.
+
 ## [0.1.0] - 2026-10-29
 
 First release.

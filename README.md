@@ -40,7 +40,10 @@ person's role, cut down by the scopes that its chain leaves. Every check writes
 an audit entry that keeps the chain and labels an agent action as machine-made.
 Share with the SDK (`shareBoard`, `unshareBoard`), the CLI (`share`, `unshare`),
 the MCP tools (`share_board`, `unshare_board`), or `PUT` and `DELETE` on
-`/boards/:id/members/:subjectId`. Listing tasks needs a `boardId`.
+`/boards/:id/members/:kind/:subjectId`. A role belongs to a kind (`human` or `agent`)
+and an id, so a person and an agent with one id are two subjects. The CLI needs
+`--subject-kind`. Erase a board, with its tasks, notes, and grants, with `eraseBoard`,
+`erase`, `erase_board`, or `DELETE /boards/:id`. Only an owner can. Listing tasks needs a `boardId`.
 
 ## Planned features
 
