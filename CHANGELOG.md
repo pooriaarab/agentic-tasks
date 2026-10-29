@@ -6,6 +6,12 @@ All notable changes to this package are in this file. The format follows
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-10-29
+
+### Fixed
+
+- `agentic-tasks mcp --help`, `-h`, `--version`, and `-v` now print the help or the version and exit with 0. Before, the command passed the flag to the server option parser, so the flag failed with exit 2. The MCP server still starts with no flag.
+
 ## [0.8.0] - 2026-10-29
 
 ### Added
