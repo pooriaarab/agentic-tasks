@@ -206,8 +206,7 @@ There is no `agentic-tasks/mcp` entry. Start the MCP server with `npx agentic-ta
 
 ### Library
 
-The library reads no environment variables. Give it a store. Every `Tasks` method takes a principal context from `agentic-identity`. `trustedContext(id, kind)` makes one from a principal id and a kind.
-It does not check them. Use it only in local code that you control.
+The library reads no environment variables. Give it a store. Every `Tasks` method takes a principal context from `agentic-identity`. `trustedContext(id, kind)` makes one from a principal id and a kind. `trustedContext` does not check the id or the kind. Use it only in local code that you control.
 
 ```ts
 import { createFileStore, createTasks, trustedContext } from "agentic-tasks";
@@ -241,7 +240,7 @@ Export the app from your Worker's entry file:
 export { default } from "agentic-tasks/worker";
 ```
 
-Add this to your Wrangler config. It sets the `nodejs_compat` flag. The `agentic-identity` code that the Worker imports uses Node built-ins such as `Buffer`:
+Add this to your Wrangler config. It sets the `nodejs_compat` flag. The Worker needs this flag because `agentic-identity` uses Node built-ins such as `Buffer`:
 
 ```jsonc
 {
@@ -277,10 +276,11 @@ The package does not ship the schema. Set up the database in this order:
 
 Without test auth, the default export reads a bearer credential from the same D1 database. Run the `agentic-identity` Worker on that database to issue credentials. The responses are:
 
-- No valid credential: 401 `UNAUTHENTICATED`. The Worker never reads the store.
+- No credential, or a malformed `Authorization` header: 401 `UNAUTHENTICATED`. The Worker does not read the store.
+- A token that is unknown, expired, or revoked: 401 `UNAUTHENTICATED`, after a store read.
 - A write that sends a valid session cookie and no bearer token: 403 `FORBIDDEN`.
 - The store cannot do the credential check: 503 `STORE_BUSY` with `retry-after: 1`. A retry can succeed.
-- Region mismatch: 503 with a credential. A retry does not help. Check `TASKS_REGION` and the database location.
+- Region mismatch: a request with a token gets 503 `STORE_BUSY` too. A retry does not help. Check `TASKS_REGION` and the database location.
 
 The module also has these named exports:
 
@@ -288,7 +288,12 @@ The module also has these named exports:
 - `tasksOnD1(env)` returns the default `Tasks` on `DB`. `authOnD1(env)` returns the default credential check on `DB`.
 - `localTestAuth` and `isLoopbackRequest` are the loopback test auth.
 
-To use another store or credential check, call `createApp` yourself. It still needs the `DB` binding and a valid `TASKS_REGION`. Without them it answers 503 before it calls your store. With your own `auth` and a D1 store, a region mismatch answers 500 `INTERNAL`.
+To use another store or credential check, call `createApp` yourself. It still needs the `DB` binding and a valid `TASKS_REGION`. Without them it answers 503 before it calls your store.
+
+Your `auth` decides what a region mismatch looks like:
+
+- If your `auth` reads the database and throws, the response is 503 `STORE_BUSY`, as above.
+- If your `auth` passes the request and the task store then hits a region mismatch, the response is 500 `INTERNAL`.
 
 Install `agentic-identity` `^0.6.0` in your app. This package uses that version. The example imports its types:
 
