@@ -583,8 +583,9 @@ export function createTasks(options: TasksOptions): Tasks {
 
     async shareBoard(boardId, subjectId, role, ctx) {
       await authorize(ctx, "admin", boardId);
-      // A grant replaces the old one without the last-owner check. An owner who
-      // lowers their own role could leave the board with no owner. Use unshare.
+      // The last-owner check is in the grant transaction of agentic-identity,
+      // which counts the owners when it demotes one. This rule is separate: an
+      // owner cannot lower their own role. Use unshare.
       if (role !== "owner" && subjectId === ctx.chain[0]?.id) {
         throw invalid("an owner cannot lower their own role. Make another owner first, then unshare");
       }
