@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, readFile, rename, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -44,5 +44,18 @@ describe("file store", () => {
 
     expect(await readFile(file, "utf8")).toBe(before);
     expect(await readdir(dir)).toEqual(["tasks.json"]);
+  });
+
+  // A version that repeats lets a stale transaction pass its check, so these
+  // files are refused instead of read.
+  it.each([
+    ["a clock behind a row version", { clock: 0, tables: { t: { x: { doc: {}, version: 1 } } } }],
+    ["a row with no version", { clock: 1, tables: { t: { x: { doc: {} } } } }],
+    ["a row version of 0", { clock: 1, tables: { t: { x: { doc: {}, version: 0 } } } }],
+    ["a fractional clock", { clock: 1.5, tables: {} }],
+    ["a row whose doc is not an object", { clock: 1, tables: { t: { x: { doc: 5, version: 1 } } } }],
+  ])("refuses a file with %s", async (_name, content) => {
+    await writeFile(file, JSON.stringify(content));
+    await expect(createFileStore(file).get("t", "x")).rejects.toThrow(/not an agentic-tasks store file/);
   });
 });

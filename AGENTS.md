@@ -15,6 +15,7 @@ Task boards where people and agents claim and finish work.
 - CLI: `agentic-tasks <command> --as <id> --kind <kind> [--file <path>]`. A write needs `--as` and `--kind`; the kind is never defaulted. Output is JSON.
 - MCP: `agentic-tasks mcp`. Each tool names its `principal`.
 - Store: tasks run on the `Store` port from `agentic-identity`. Tests use its memory adapter. The CLI uses `createFileStore`, which passes the `Store` contract suite.
+- The store file format is not the format of earlier releases. The CLI refuses an old file.
 - Store file: `AGENTIC_TASKS_FILE` or `--file` picks the JSON file. The default is `./agentic-tasks.json`.
 
 ## Claim rules

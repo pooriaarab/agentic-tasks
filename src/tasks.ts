@@ -180,11 +180,31 @@ function samePrincipal(a: Principal, b: Principal): boolean {
   return a.id === b.id && a.kind === b.kind;
 }
 
+// A claim read from storage may hold any value. Anything but a holder with
+// an id and kind, and an expiry text, is corrupt.
+function isWellFormed(claim: unknown): claim is Claim {
+  const candidate = claim as Partial<Claim> | null;
+  return (
+    typeof candidate === "object" &&
+    candidate !== null &&
+    typeof candidate.holder?.id === "string" &&
+    typeof candidate.holder.kind === "string" &&
+    typeof candidate.expiresAt === "string"
+  );
+}
+
 // A claim is live until its expiry instant. At the instant itself it has expired.
 // An expiry that does not parse counts as live, so a corrupt claim blocks others.
 function isLive(claim: Claim, nowMs: number): boolean {
   const expiresMs = Date.parse(claim.expiresAt);
   return !Number.isFinite(expiresMs) || expiresMs > nowMs;
+}
+
+// True when another principal holds the task. A corrupt claim counts as held.
+function heldByOther(claim: unknown, who: Principal, nowMs: number): boolean {
+  if (claim === undefined) return false;
+  if (!isWellFormed(claim)) return true;
+  return isLive(claim, nowMs) && !samePrincipal(claim.holder, who);
 }
 
 function nextPosition(siblings: Task[]): number {
@@ -339,16 +359,8 @@ export function createTasks(options: TasksOptions): Tasks {
         requireOpen(task);
         const now = clock();
         const at = now.toISOString();
-        const claim = task.claim;
-        if (
-          claim !== undefined &&
-          isLive(claim, now.getTime()) &&
-          !samePrincipal(claim.holder, actor)
-        ) {
-          throw new TaskError(
-            "CLAIM_HELD",
-            `task ${id} is held by another principal until ${claim.expiresAt}`,
-          );
+        if (heldByOther(task.claim, actor, now.getTime())) {
+          throw new TaskError("CLAIM_HELD", `task ${id} is held by another principal`);
         }
         task.status = "closed";
         task.closedAt = at;
@@ -373,14 +385,11 @@ export function createTasks(options: TasksOptions): Tasks {
         requireOpen(task);
         const now = clock();
         const nowIso = now.toISOString();
+        if (heldByOther(task.claim, principal, now.getTime())) {
+          throw new TaskError("CLAIM_HELD", `task ${id} is held by another principal`);
+        }
         const current = task.claim;
         const live = current !== undefined && isLive(current, now.getTime());
-        if (live && !samePrincipal(current.holder, principal)) {
-          throw new TaskError(
-            "CLAIM_HELD",
-            `task ${id} is held by another principal until ${current.expiresAt}`,
-          );
-        }
         task.claim = {
           holder: { id: principal.id, kind: principal.kind },
           claimedAt: live ? current.claimedAt : nowIso,
@@ -396,7 +405,7 @@ export function createTasks(options: TasksOptions): Tasks {
       assertPrincipal(principal);
       return store.transaction(async (tx) => {
         const task = await requireTask(tx, id);
-        if (task.claim === undefined || !samePrincipal(task.claim.holder, principal)) {
+        if (!isWellFormed(task.claim) || !samePrincipal(task.claim.holder, principal)) {
           throw new TaskError("NOT_HOLDER", `only the holder can release task ${id}`);
         }
         delete task.claim;
@@ -416,7 +425,7 @@ export function createTasks(options: TasksOptions): Tasks {
         const entry: ProgressEntry = {
           id: crypto.randomUUID(),
           taskId: task.id,
-          seq: Math.max(0, ...earlier.map((other) => other.seq)) + 1,
+          seq: Math.max(0, ...earlier.map((other) => other.seq).filter(Number.isSafeInteger)) + 1,
           note: text,
           by: { id: actor.id, kind: actor.kind },
           at: clock().toISOString(),

@@ -249,6 +249,29 @@ describe.each(backends)("claim rules on the %s store", (_name, open) => {
     expect((await h.tasks.getTask(id)).claim?.holder).toEqual(ALICE);
   });
 
+  it("counts a claim with a non-text expiry as live", async () => {
+    const id = await openTask();
+    await writeRawClaim(id, {
+      holder: ALICE,
+      claimedAt: "2026-10-28T10:00:00.000Z",
+      expiresAt: 1 as unknown as string,
+    });
+    await expect(
+      errorCode(h.tasks.claim(id, BOT, { ttlMs: TEN_MINUTES })),
+    ).resolves.toBe("CLAIM_HELD");
+    await expect(errorCode(h.tasks.closeTask(id, BOT))).resolves.toBe("CLAIM_HELD");
+  });
+
+  it("reports a claim that is not an object as held, with an error code", async () => {
+    const id = await openTask();
+    await writeRawClaim(id, null as unknown as Claim);
+    await expect(
+      errorCode(h.tasks.claim(id, BOT, { ttlMs: TEN_MINUTES })),
+    ).resolves.toBe("CLAIM_HELD");
+    await expect(errorCode(h.tasks.closeTask(id, BOT))).resolves.toBe("CLAIM_HELD");
+    await expect(errorCode(h.tasks.release(id, BOT))).resolves.toBe("NOT_HOLDER");
+  });
+
   it("lets exactly one of two simultaneous claims succeed", async () => {
     const id = await openTask();
     const results = await Promise.allSettled([

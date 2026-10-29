@@ -153,13 +153,36 @@ async function load(path: string): Promise<Data> {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return { clock: 0, tables: new Map() };
     throw error;
   }
+  const refuse = () => new Error(`${path} is not an agentic-tasks store file`);
   const raw = JSON.parse(text) as { clock?: unknown; tables?: unknown };
-  if (typeof raw.clock !== "number" || typeof raw.tables !== "object" || raw.tables === null) {
-    throw new Error(`${path} is not an agentic-tasks store file`);
+  const tablesRaw = raw.tables;
+  if (
+    typeof raw.clock !== "number" ||
+    !Number.isSafeInteger(raw.clock) ||
+    raw.clock < 0 ||
+    typeof tablesRaw !== "object" ||
+    tablesRaw === null
+  ) {
+    throw refuse();
   }
+  // Every row needs a version above 0 that the clock has already passed. A
+  // version that repeats would let a stale transaction pass its check.
   const tables = new Map<string, Map<string, Row>>();
-  for (const [name, rows] of Object.entries(raw.tables as Record<string, Record<string, Row>>)) {
-    tables.set(name, new Map(Object.entries(rows)));
+  for (const [name, rows] of Object.entries(tablesRaw as Record<string, Record<string, Row>>)) {
+    const table = new Map<string, Row>();
+    for (const [id, row] of Object.entries(rows ?? {})) {
+      const ok =
+        typeof row === "object" &&
+        row !== null &&
+        typeof row.doc === "object" &&
+        row.doc !== null &&
+        Number.isSafeInteger(row.version) &&
+        row.version > 0 &&
+        row.version <= raw.clock;
+      if (!ok) throw refuse();
+      table.set(id, row);
+    }
+    tables.set(name, table);
   }
   return { clock: raw.clock, tables };
 }

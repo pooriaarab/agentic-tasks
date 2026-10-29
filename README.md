@@ -48,7 +48,7 @@ npm run build && npm run typecheck && npm test
 Run the HTTP API on your machine only:
 
 ```sh
-npx wrangler dev --var TASKS_UNSAFE_TRUST_HEADERS:1
+WRANGLER_SEND_METRICS=false npx wrangler dev --var TASKS_UNSAFE_TRUST_HEADERS:1
 ```
 
 ## Limits
@@ -57,6 +57,9 @@ npx wrangler dev --var TASKS_UNSAFE_TRUST_HEADERS:1
 - The Worker keeps state in memory. Each instance has its own tasks and claims,
   so the claim rules do not hold across instances.
 - The JSON file store works on one machine. Do not put the file on a network share.
+- The CLI file format changed. It does not read files from earlier releases.
+- Two tasks made at the same moment in one column can share a position. Two notes
+  made at the same moment can share a `seq`. Ids break the tie.
 - Tasks use any `Store` that passes the `agentic-identity` contract suite. Pass a
   `Store` to `createTasks`. `createFileStore` is the file adapter. Use
   `createMemoryStore` from `agentic-identity` in tests.
