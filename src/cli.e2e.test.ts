@@ -287,11 +287,22 @@ describe("agentic-tasks CLI (built binary)", { timeout: 30_000 }, () => {
       [["board", "Sprint", "--title", "Other"], "title"],
       [["list", "b1", "--board", "b1"], "board id"],
       [["get", "t1", "--task", "t1"], "task id"],
+      [["column", "b1", "--board", "b1"], "board id"],
+      [["new", "b1", "--board", "b1"], "board id"],
+      [["progress", "t1", "--task", "t1"], "task id"],
+      [["share", "b1", "bob", "--board", "b1"], "board id"],
+      [["new", "A", "B", "--board", "b1"], "board id"],
     ] as const) {
       const result = run([...args, ...ALICE]);
       expect(result.code).toBe(2);
       expect(result.stderr).toContain(`give the ${word} once`);
     }
+  });
+
+  it("refuses a flag repeated for an argument", () => {
+    const result = run(["list", "--board", "a", "--board", "b", ...ALICE]);
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain("give --board once");
   });
 
   it("names the missing argument for every form", () => {

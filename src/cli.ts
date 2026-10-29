@@ -19,7 +19,7 @@ interface CommandSpec {
 const COMMANDS: Record<string, CommandSpec> = {
   board: {
     args: "<title>",
-    summary: "Create a board. --columns adds columns.",
+    summary: "Create a board. The title is the argument or --title. --columns adds columns.",
     flags: ["title", "columns"],
   },
   column: { args: "<board id> <name>", summary: "Add a column to a board.", flags: ["name"] },
@@ -91,12 +91,16 @@ for (const spec of Object.values(COMMANDS)) {
 const COMMAND_WIDTH =
   Math.max(...Object.entries(COMMANDS).map(([name, spec]) => `${name} ${spec.args}`.trim().length)) + 2;
 
+// A flag that stands for an argument is the same value, never a second one.
+const USAGE_NOTE = "An <id> or <title> or <name> argument can be given as --board, --task, --title, or --name instead.";
+
 const USAGE = [
   `usage: agentic-tasks <command> [args] --as <id> --kind <kind> [--file <path>]`,
   "",
   "Every command but mcp needs --as and --kind. The kind is never defaulted.",
   "The store file is --file, or AGENTIC_TASKS_FILE, or ./agentic-tasks.json.",
   "Output is JSON.",
+  USAGE_NOTE,
   "",
   "commands:",
   ...Object.entries(COMMANDS).map(
@@ -113,6 +117,7 @@ function commandUsage(name: string, spec: CommandSpec): string {
     `usage: agentic-tasks ${`${name} ${spec.args}`.trim()}${principal}${flags} [--file <path>]`,
     "",
     spec.summary,
+    ...(slotsOf(spec).some((slot) => slot in SLOT_FLAGS) ? ["", USAGE_NOTE] : []),
   ].join("\n");
 }
 
@@ -159,29 +164,32 @@ function checkArgs(args: ParsedArgs, spec: CommandSpec): void {
 
 // Fills the arguments of a command in order. An argument with a flag form comes
 // from the flag when given, else from the next positional. It is never both: a
-// positional left over after a flag filled a slot is a second value for it.
+// positional that repeats a flag's value, or is left over after a flag filled its
+// slot, is a second value for that argument.
 function bindArgs(args: ParsedArgs, spec: CommandSpec): Map<string, string> {
   const bound = new Map<string, string>();
-  const flagged: string[] = [];
+  const flagged = new Map<string, string>();
   let next = 0;
   for (const slot of slotsOf(spec)) {
     const flag = SLOT_FLAGS[slot];
-    const named = flag === undefined ? undefined : one(args.flags, flag);
+    const named = flag === undefined ? undefined : args.flags.get(flag);
     if (named !== undefined) {
-      bound.set(slot, named);
-      flagged.push(slot);
+      if (named.length > 1) throw new UsageError(`give --${flag} once`);
+      bound.set(slot, named[0] as string);
+      flagged.set(slot, named[0] as string);
     } else if (args.positionals[next] !== undefined) {
       bound.set(slot, args.positionals[next] as string);
       next += 1;
     }
   }
+  const twice = (slot: string): UsageError =>
+    new UsageError(`give the ${slot} once: as an argument or as --${SLOT_FLAGS[slot]}`);
+  for (const [slot, value] of flagged) {
+    if (args.positionals.includes(value)) throw twice(slot);
+  }
   if (next < args.positionals.length) {
-    const slot = flagged[0];
-    throw new UsageError(
-      slot === undefined
-        ? `unexpected argument ${args.positionals[next]}`
-        : `give the ${slot} once: as an argument or as --${SLOT_FLAGS[slot]}`,
-    );
+    const slot = flagged.keys().next().value;
+    throw slot === undefined ? new UsageError(`unexpected argument ${args.positionals[next]}`) : twice(slot);
   }
   return bound;
 }
