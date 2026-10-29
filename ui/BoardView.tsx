@@ -52,9 +52,10 @@ function Chips({ task }: { task: Task }) {
       {task.dueDate && <span className={late ? "chip chip-late" : "chip"}>{late ? "Late, due " : "Due "}{task.dueDate}</span>}
       {held && task.claim && <span className="chip">Claimed by {personName(task.claim.holder.id)}</span>}
       {task.assignees.map((a) => (
-        <span key={`${a.kind}:${a.id}`} className="chip" title={a.kind}>
+        <span key={`${a.kind}:${a.id}`} className="chip">
           {isAgent(a) && <BotIcon aria-hidden="true" focusable="false" />}
           Assigned to {personName(a.id)}
+          {isAgent(a) && <span className="sr-only"> ({a.kind})</span>}
         </span>
       ))}
       {task.labels.map((l) => <span key={l} className="chip chip-label">{l}</span>)}
@@ -63,20 +64,21 @@ function Chips({ task }: { task: Task }) {
 }
 
 // Mounts afresh for each rename, so each rename starts from the current title and ends once.
-function RenameForm({ title, onDone }: { title: string; onDone: (title: string | null) => void }) {
+function RenameForm({ title, onDone }: { title: string; onDone: (title: string | null, restoreFocus: boolean) => void }) {
   const [draft, setDraft] = useState(title);
   const settled = useRef(false);
   // Enter, Escape, and blur each end the edit. Only the first counts.
-  const finish = (value: string | null) => {
+  // Enter and Escape give the focus back to the card. A blur means the person chose another place.
+  const finish = (value: string | null, restoreFocus = true) => {
     if (settled.current) return;
     settled.current = true;
-    onDone(value);
+    onDone(value, restoreFocus);
   };
   return (
     <form className="card-edit" onSubmit={(e) => { e.preventDefault(); finish(draft); }}>
       <input className="bare-input" aria-label={`Title of ${title}`} autoFocus value={draft} onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); finish(null); } }}
-        onBlur={() => finish(draft)} />
+        onBlur={() => { if (document.hasFocus()) finish(draft, false); }} />
     </form>
   );
 }
@@ -89,7 +91,7 @@ function Card({ task, columns, columnName, renaming, onOpen, onMove, onRename, o
   onOpen: () => void;
   onMove: (columnId: string) => void;
   onRename: () => void;
-  onRenameDone: (title: string | null) => void;
+  onRenameDone: (title: string | null, restoreFocus: boolean) => void;
   onDragStart: () => void;
   onDragEnd: () => void;
 }) {
@@ -142,7 +144,7 @@ function QuickAdd({ column, onAdd }: { column: { id: string; name: string }; onA
     if (text === "" || busy.current) return;
     busy.current = true;
     try {
-      if (await onAdd(text)) setTitle("");
+      if (await onAdd(text)) setTitle((t) => (t.trim() === text ? "" : t));
     } finally {
       busy.current = false;
     }
@@ -245,23 +247,28 @@ export function BoardView({ client, session, boardId, onLoaded }: {
   const quickAdd = (columnId: string) => (title: string) =>
     attempt(() => client.createTask({ boardId: board.id, title, columnId }));
   // If a filter now hides the card, the focus goes to the first quick add field, not to the page top.
-  const focusCard = (id: string) =>
-    requestAnimationFrame(() =>
-      (document.querySelector<HTMLElement>(`[data-task-id="${id}"]`) ?? document.querySelector<HTMLElement>("[data-quick-add]"))?.focus());
+  const focusCard = (id: string, onlyIfIdle = false) =>
+    requestAnimationFrame(() => {
+      const card = document.querySelector<HTMLElement>(`[data-task-id="${id}"]`);
+      // After a slow move, leave the focus alone if the person has gone to another control.
+      const at = document.activeElement;
+      if (onlyIfIdle && at !== null && at !== document.body && !card?.parentElement?.contains(at)) return;
+      (card ?? document.querySelector<HTMLElement>("[data-quick-add]") ?? document.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]'))?.focus();
+    });
   // A move remounts the card in its new column, so give the focus back and say where it went.
   const move = (task: Task, to: string) => {
     if (task.columnId === to) return;
     setAnnounce("");
     void attempt(() => client.moveTask(task.id, { columnId: to })).then((ok) => {
       if (ok) setAnnounce(`Moved ${task.title} to ${nameOf(to)}.`);
-      focusCard(task.id);
+      focusCard(task.id, true);
     });
   };
-  const rename = (task: Task, title: string | null) => {
+  const rename = (task: Task, title: string | null, restoreFocus: boolean) => {
     setRenaming(null);
     const next = title?.trim();
     if (next && next !== task.title) void attempt(() => client.updateTask(task.id, { title: next }));
-    focusCard(task.id);
+    if (restoreFocus) focusCard(task.id);
   };
   const close = () => {
     const id = editingId;
@@ -278,7 +285,7 @@ export function BoardView({ client, session, boardId, onLoaded }: {
   const card = (t: Task, columnName?: string) => (
     <Card key={t.id} task={t} columns={board.columns} columnName={columnName} renaming={renaming === t.id}
       onOpen={() => setEditingId(t.id)} onMove={(to) => move(t, to)} onRename={() => setRenaming(t.id)}
-      onRenameDone={(title) => rename(t, title)} onDragStart={() => setDragging(t.id)} onDragEnd={() => { setDragging(null); setOver(null); }} />
+      onRenameDone={(title, restore) => rename(t, title, restore)} onDragStart={() => setDragging(t.id)} onDragEnd={() => { setDragging(null); setOver(null); }} />
   );
   // The quick add fields live in the board tab. Show it, with no filter hiding it, then focus the first.
   const newTask = () => {

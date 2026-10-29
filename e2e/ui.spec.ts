@@ -239,7 +239,7 @@ test("at 390px wide the board content and the panel fit", async ({ page }) => {
   await createList(page, "Small");
   await addTask(page, "A task with a rather long title that must wrap inside its card");
   await card(page, "A task").click();
-  const panel = page.getByRole("complementary", { name: "Task details" });
+  const panel = page.getByRole("dialog", { name: "Task details" });
   await expect(panel).toBeVisible();
   const box = await panel.boundingBox();
   expect(box!.x).toBeGreaterThanOrEqual(0);
@@ -286,6 +286,9 @@ test("rename again, rename from the card menu, a stale panel does not undo a mov
 
   // A drop that carries no task, such as dropped text, moves nothing.
   await page.getByRole("region", { name: /Done/ }).dispatchEvent("drop", { dataTransfer: await page.evaluateHandle(() => new DataTransfer()) });
+  // A wrong move would reach the server and the screen after a round trip, so wait before the negative check.
+  await page.waitForTimeout(600);
+  await expect(page.getByRole("region", { name: /Done/ }).locator("button.card-main")).toHaveCount(0);
   await expect(page.getByRole("region", { name: /Doing/ }).locator("button.card-main", { hasText: "Gamma" })).toBeVisible();
 });
 
@@ -318,7 +321,7 @@ test("at 390px the Tab key stays inside the open panel", async ({ page }) => {
   await createList(page, "Trap");
   await addTask(page, "Trapped");
   await card(page, "Trapped").click();
-  const panel = page.getByRole("complementary", { name: "Task details" });
+  const panel = page.getByRole("dialog", { name: "Task details" });
   await expect(page.getByLabel("Title")).toBeFocused();
   await page.keyboard.press("Shift+Tab");
   await page.keyboard.press("Shift+Tab");
@@ -326,4 +329,18 @@ test("at 390px the Tab key stays inside the open panel", async ({ page }) => {
   await page.getByRole("button", { name: "Save task" }).focus();
   await page.keyboard.press("Tab");
   expect(await panel.evaluate((el) => el.contains(document.activeElement))).toBe(true);
+});
+
+test("a rename ended by a click elsewhere does not pull the focus back", async ({ page }) => {
+  await connect(page, `blu-${unique()}`);
+  await createList(page, "Blur");
+  await addTask(page, "Quiet");
+  await card(page, "Quiet").focus();
+  await page.keyboard.press("F2");
+  await page.keyboard.press("ControlOrMeta+a");
+  await page.keyboard.type("Quieter");
+  await page.getByLabel("Search").click();
+  await page.keyboard.type("zz");
+  await expect(page.getByLabel("Search")).toBeFocused();
+  await expect(page.getByLabel("Search")).toHaveValue("zz");
 });

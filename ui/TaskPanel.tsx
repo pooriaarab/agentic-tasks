@@ -31,6 +31,10 @@ export function TaskPanel({ client, session, board, task, narrow, onClose, onCha
   const dueDate = edits.dueDate ?? task.dueDate ?? "";
   const columnId = edits.columnId ?? task.columnId;
   const assignees = edits.assignees ?? task.assignees;
+  // An edit put back to the saved value is not a change.
+  const dirty =
+    title !== task.title || description !== task.description || labels !== task.labels.join(", ") ||
+    dueDate !== (task.dueDate ?? "") || columnId !== task.columnId || JSON.stringify(assignees) !== JSON.stringify(task.assignees);
   const setAssignees = (list: Principal[]) => edit({ assignees: list });
   const [assigneeId, setAssigneeId] = useState("");
   const [assigneeKind, setAssigneeKind] = useState("");
@@ -100,7 +104,7 @@ export function TaskPanel({ client, session, board, task, narrow, onClose, onCha
   const onKeyDown = (e: KeyboardEvent<HTMLElement>) => {
     if (e.key === "Escape" && !e.defaultPrevented) {
       // Escape never throws away an edit. The hide button does.
-      if (Object.keys(edits).length > 0) setError("You have unsaved changes. Press Save, or Hide details to discard them.");
+      if (dirty) setError("You have unsaved changes. Press Save, or Hide details to discard them.");
       else onClose();
     }
     if (e.key === "Tab" && narrow) {
@@ -113,7 +117,7 @@ export function TaskPanel({ client, session, board, task, narrow, onClose, onCha
     }
   };
   return (
-    <aside className="panel" aria-label="Task details" onKeyDown={onKeyDown}>
+    <div className="panel" role={narrow ? "dialog" : "complementary"} aria-modal={narrow || undefined} aria-label="Task details" onKeyDown={onKeyDown}>
       <header className="panel-head">
         <h2 className="panel-title">Task</h2>
         <IconButton label="Hide details" icon={<CloseIcon aria-hidden="true" />} variant="ghost" onClick={onClose} />
@@ -174,6 +178,6 @@ export function TaskPanel({ client, session, board, task, narrow, onClose, onCha
         <p className="meta" role="status">{saved ? "Saved." : ""}</p>
         <Button type="submit" form="task-form" loading={busy}>Save task</Button>
       </footer>
-    </aside>
+    </div>
   );
 }
