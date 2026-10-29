@@ -189,6 +189,14 @@ describe("agentic-tasks CLI (built binary)", () => {
     expect(result.stderr).toMatch(/--board/);
   });
 
+  it("prints usage and exits 0 on --help", () => {
+    for (const flag of ["--help", "-h", "help"]) {
+      const result = spawnSync(process.execPath, [CLI, flag], { encoding: "utf8" });
+      expect(result.status).toBe(0);
+      expect(result.stdout).toMatch(/usage/i);
+    }
+  });
+
   it("exits 2 with a usage message on an unknown command", () => {
     const result = run(["teleport"]);
     expect(result.code).toBe(2);
