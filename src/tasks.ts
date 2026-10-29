@@ -217,9 +217,16 @@ function heldByOther(claim: unknown, who: Principal, nowMs: number): boolean {
   return isLive(claim, nowMs) && !samePrincipal(claim.holder, who);
 }
 
+// A stored position that is not a whole number is skipped, so one bad row
+// cannot give every new task in the column a position that JSON turns to null.
 function nextPosition(siblings: Task[]): number {
-  if (siblings.length === 0) return 0;
-  return Math.max(...siblings.map((task) => task.position)) + 1;
+  const positions = siblings.map((task) => task.position).filter(Number.isSafeInteger);
+  return positions.length === 0 ? 0 : Math.max(...positions) + 1;
+}
+
+function byPosition(a: Task, b: Task): number {
+  const rank = (task: Task) => (Number.isSafeInteger(task.position) ? task.position : Number.MAX_SAFE_INTEGER);
+  return rank(a) - rank(b) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 }
 
 function touch(task: Task, actor: Principal, at: string): void {
@@ -310,13 +317,15 @@ export function createTasks(options: TasksOptions): Tasks {
       return requireTask(store, id);
     },
 
+    // Sorted here, not by the store: the store leaves out a doc whose position is
+    // missing, and a corrupt row must still show up in the list.
     async listTasks(filter = {}) {
-      return listRows<Task>(
-        store,
-        "tasks",
-        { boardId: filter.boardId, columnId: filter.columnId, status: filter.status },
-        { field: "position" },
-      );
+      const rows = await listRows<Task>(store, "tasks", {
+        boardId: filter.boardId,
+        columnId: filter.columnId,
+        status: filter.status,
+      });
+      return rows.sort(byPosition);
     },
 
     async moveTask(id, target, actor) {

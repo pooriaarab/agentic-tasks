@@ -68,4 +68,19 @@ describe("file store", () => {
     await writeFile(file, "{ not json");
     await expect(createFileStore(file).get("t", "x")).rejects.toThrow(/not an agentic-tasks store file/);
   });
+
+  it("keeps the version from the first read of a doc, so a later read cannot hide a change", async () => {
+    const one = createFileStore(file);
+    const two = createFileStore(file);
+    await one.put("t", "a", { x: 1 });
+    let runs = 0;
+    await one.transaction(async (tx) => {
+      runs += 1;
+      await tx.get("t", "a");
+      if (runs === 1) await two.put("t", "a", { x: 2 });
+      await tx.get("t", "a");
+      await tx.put("t", "b", { x: 1 });
+    });
+    expect(runs).toBe(2);
+  });
 });

@@ -1,14 +1,19 @@
-import { spawn, type ChildProcess } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import type { ChildProcess } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { migrate, startWorker, stopWorker, waitForWorker } from "./worker-harness.js";
 
-// Starts the real Worker with `wrangler dev`. ci:local installs wrangler first.
-const WRANGLER = fileURLToPath(new URL("../node_modules/wrangler/bin/wrangler.js", import.meta.url));
+// The real Worker under `wrangler dev`, on a local D1 database.
+const PERSIST = mkdtempSync(join(tmpdir(), "agentic-tasks-e2e-"));
+beforeAll(() => migrate(PERSIST), 120_000);
+afterAll(() => rmSync(PERSIST, { recursive: true, force: true }));
 const PORT = 18787;
 const PORT_WITHOUT_FLAG = 18788;
 const BASE = `http://127.0.0.1:${PORT}/api/v1/tasks`;
 const BASE_WITHOUT_FLAG = `http://127.0.0.1:${PORT_WITHOUT_FLAG}/api/v1/tasks`;
-const TRUST_FLAG = ["--var", "TASKS_UNSAFE_TRUST_HEADERS:1"];
+const TRUST_FLAG = ["TASKS_UNSAFE_TRUST_HEADERS:1"];
 const ALICE = { "x-principal-id": "alice", "x-principal-kind": "human" };
 const BOT = { "x-principal-id": "bot-1", "x-principal-kind": "agent_of_human" };
 
@@ -44,7 +49,7 @@ function errorCodeOf(reply: Reply): string | undefined {
   return (reply.body as { error?: { code: string } } | undefined)?.error?.code;
 }
 
-// A fresh board, column, and task for each case. The Worker keeps state per instance.
+// A fresh board, column, and task for each case.
 async function openTask(): Promise<{ boardId: string; columnId: string; taskId: string }> {
   const board = (await call("POST", "/boards", ALICE, { title: "Sprint" })).body as {
     id: string;
@@ -59,42 +64,15 @@ async function openTask(): Promise<{ boardId: string; columnId: string; taskId: 
   return { boardId: board.id, columnId, taskId: task.id };
 }
 
-function startWorker(port: number, vars: string[]): ChildProcess {
-  return spawn(
-    process.execPath,
-    [WRANGLER, "dev", "--ip", "127.0.0.1", "--port", String(port), ...vars],
-    {
-      env: { ...process.env, WRANGLER_SEND_METRICS: "false", CI: "1" },
-      stdio: "ignore",
-    },
-  );
-}
-
-// Any HTTP reply counts as up. The first request can fail while wrangler boots.
-async function waitForWorker(base: string): Promise<void> {
-  const deadline = Date.now() + 90_000;
-  for (;;) {
-    try {
-      await fetch(`${base}/boards/not-there`);
-      return;
-    } catch {
-      if (Date.now() > deadline) throw new Error("wrangler dev did not start in time");
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    }
-  }
-}
-
 describe("agentic-tasks Worker without the trust flag", () => {
   let server: ChildProcess;
 
   beforeAll(async () => {
-    server = startWorker(PORT_WITHOUT_FLAG, []);
-    await waitForWorker(BASE_WITHOUT_FLAG);
+    server = startWorker(PORT_WITHOUT_FLAG, PERSIST, []);
+    await waitForWorker(BASE_WITHOUT_FLAG, server);
   }, 120_000);
 
-  afterAll(() => {
-    server.kill("SIGTERM");
-  });
+  afterAll(() => stopWorker(server));
 
   it("answers 503 to a write even when it carries principal headers", async () => {
     const response = await fetch(`${BASE_WITHOUT_FLAG}/boards`, {
@@ -118,13 +96,11 @@ describe("agentic-tasks Worker over wrangler dev", () => {
   let server: ChildProcess;
 
   beforeAll(async () => {
-    server = startWorker(PORT, TRUST_FLAG);
-    await waitForWorker(BASE);
+    server = startWorker(PORT, PERSIST, TRUST_FLAG);
+    await waitForWorker(BASE, server);
   }, 120_000);
 
-  afterAll(() => {
-    server.kill("SIGTERM");
-  });
+  afterAll(() => stopWorker(server));
 
   it("answers 404 for a route that does not exist", async () => {
     const reply = await call("GET", "/nope");
