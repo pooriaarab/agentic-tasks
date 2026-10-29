@@ -10,6 +10,7 @@ import {
   type Store,
   type Subject,
 } from "agentic-identity";
+import { requirePrincipal } from "agentic-identity/http";
 import { trustedContext } from "./principal.js";
 import { createD1Store, type D1Like } from "agentic-identity/cloudflare";
 import { createTasks, type Tasks } from "./tasks.js";
@@ -153,13 +154,16 @@ export function createApp(resolve: Resolve, auth?: Auth | ((env: Bindings) => Au
       );
     }
     const chosen = local ? localTestAuth : typeof auth === "function" ? auth(c.env) : (auth ?? authOnD1(c.env));
-    const ctx = await chosen.authenticate(c.req.raw);
-    if (ctx === null) {
-      return c.json(
-        { error: { code: "UNAUTHENTICATED", message: "Send a valid credential." } },
-        401,
-      );
+    // The loopback test auth reads principal headers, not a bearer credential, so
+    // it skips the bearer check. Every real credential goes through identity's.
+    const found = local ? await chosen.authenticate(c.req.raw) : await requirePrincipal(c.req.raw, chosen);
+    if (found === null || found instanceof Response) {
+      const status = found === null ? 401 : found.status;
+      const headers = status === 401 ? { "www-authenticate": "Bearer" } : undefined;
+      const body = status === 401 ? { code: "UNAUTHENTICATED", message: "Send a valid credential." } : { code: "FORBIDDEN", message: "Not allowed." };
+      return c.json({ error: body }, status as 401 | 403 | 503, headers);
     }
+    const ctx = found;
     c.set("ctx", ctx);
     await next();
   });
