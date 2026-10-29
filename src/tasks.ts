@@ -279,6 +279,7 @@ function nextPosition(siblings: Task[]): number {
 async function allocate(tx: StoreOps, key: string, floor: number): Promise<number> {
   const stored = ((await tx.get("counters", key)) as { next?: unknown } | null)?.next;
   const next = Math.max(floor, Number.isSafeInteger(stored) ? (stored as number) : 0);
+  if (!Number.isSafeInteger(next + 1)) throw invalid("sequence is full");
   await tx.put("counters", key, { id: key, next: next + 1 });
   return next;
 }
@@ -451,8 +452,8 @@ export function createTasks(options: TasksOptions): Tasks {
     },
 
     async moveTask(id, target, ctx) {
-      if (target.position !== undefined && !Number.isInteger(target.position)) {
-        throw invalid("position must be an integer");
+      if (target.position !== undefined && !Number.isSafeInteger(target.position)) {
+        throw invalid("position must be a safe integer");
       }
       await authorizeTask(ctx, "write", id);
       const actor = actorOf(ctx);

@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createMemoryStore, type Store } from "agentic-identity";
+import { createMemoryStore, type Query, type Store, type StoreOps } from "agentic-identity";
 import { createFileStore } from "./file-store.js";
 import { trustedContext } from "./principal.js";
 import { createTasks } from "./tasks.js";
@@ -78,6 +78,40 @@ async function settled<T>(work: () => Promise<T>): Promise<T> {
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
   }
+}
+
+// Holds each writer, after its read of the sequence, until both writers have
+// read. A broken allocation that reads the highest row (a query on tasks) or the
+// counter then always sees the same value in both writers, so the race is certain
+// and not left to timing. The wait ends by itself so the test never hangs.
+function gated(store: Store, gate: { arrived: number; release: () => void; open: Promise<void> }): Store {
+  return {
+    ...store,
+    transaction: (fn) =>
+      store.transaction(async (tx) => {
+        let seen = false;
+        const hold = async () => {
+          if (seen) return;
+          seen = true;
+          gate.arrived += 1;
+          if (gate.arrived >= 2) gate.release();
+          await gate.open;
+        };
+        return fn({
+          ...tx,
+          get: (async (collection: string, id: string) => {
+            const row = await tx.get(collection, id);
+            if (collection === "counters") await hold();
+            return row;
+          }) as StoreOps["get"],
+          query: (async (collection: string, q?: Query) => {
+            const rows = await tx.query(collection, q);
+            if (collection === "tasks") await hold();
+            return rows;
+          }) as StoreOps["query"],
+        });
+      }),
+  } as Store;
 }
 
 const distinct = (numbers: number[]) => new Set(numbers).size === numbers.length;
@@ -160,4 +194,58 @@ describe.each(backends)("allocation on the %s store", (_name, rounds, open) => {
       await s.cleanup();
     }
   }, 120_000);
+});
+
+describe("allocation with both writers held between read and write", () => {
+  it.each(["file", "memory"] as const)("gives two createTask calls on the %s store different positions", async (kind) => {
+    const [, , open] = backends.find(([name]) => name === kind)!;
+    const stores = await open();
+    try {
+      const base = createTasks({ store: stores.one });
+      const board = await base.createBoard({ title: "Sprint" }, ALICE);
+      const col = (await base.addColumn(board.id, "Todo", ALICE)).columns[0]!.id;
+      for (let round = 0; round < 3; round += 1) {
+        let release!: () => void;
+        const open = new Promise<void>((resolve) => {
+          release = resolve;
+          setTimeout(resolve, 1_000);
+        });
+        const gate = { arrived: 0, release, open };
+        const one = createTasks({ store: gated(stores.one, gate) });
+        const two = createTasks({ store: gated(stores.two, gate) });
+        const made = await Promise.all([
+          settled(() => one.createTask({ boardId: board.id, columnId: col, title: `a${round}` }, ALICE)),
+          settled(() => two.createTask({ boardId: board.id, columnId: col, title: `b${round}` }, ALICE)),
+        ]);
+        expect(distinct(made.map((task) => task.position as number))).toBe(true);
+      }
+    } finally {
+      await stores.cleanup();
+    }
+  }, 60_000);
+});
+
+describe("allocation on bad data", () => {
+  it.each([["text", "abc"], ["NaN", Number.NaN], ["fraction", 1.5], ["negative", -3]])(
+    "ignores a counter holding %s and stays above existing rows",
+    async (_label, bad) => {
+      const store = createMemoryStore({ region: "eu" });
+      const tasks = createTasks({ store });
+      const board = await tasks.createBoard({ title: "Sprint" }, ALICE);
+      const col = (await tasks.addColumn(board.id, "Todo", ALICE)).columns[0]!.id;
+      await tasks.createTask({ boardId: board.id, columnId: col, title: "a" }, ALICE);
+      await tasks.createTask({ boardId: board.id, columnId: col, title: "b" }, ALICE);
+      await store.put("counters", `position:${board.id}:${col}`, { id: "x", next: bad as never });
+      const next = await tasks.createTask({ boardId: board.id, columnId: col, title: "c" }, ALICE);
+      expect(next.position).toBe(2);
+    },
+  );
+
+  it("refuses a position that is not a safe integer", async () => {
+    const tasks = createTasks({ store: createMemoryStore({ region: "eu" }) });
+    const board = await tasks.createBoard({ title: "Sprint" }, ALICE);
+    const col = (await tasks.addColumn(board.id, "Todo", ALICE)).columns[0]!.id;
+    const task = await tasks.createTask({ boardId: board.id, columnId: col, title: "a" }, ALICE);
+    await expect(tasks.moveTask(task.id, { columnId: col, position: 2 ** 53 }, ALICE)).rejects.toThrow(/safe integer|integer/);
+  });
 });
