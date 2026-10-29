@@ -64,7 +64,7 @@ describe("two Worker instances on one D1 database", () => {
     const board = (await call(PORT_ONE, "POST", "/boards", ALICE, { title: "Sprint" })).body!;
     await call(PORT_ONE, "POST", `/boards/${board.id}/columns`, ALICE, { name: "Todo" });
     for (const bot of ["bot-1", ...Array.from({ length: 8 }, (_, i) => `bot-${i}`)]) {
-      await call(PORT_ONE, "PUT", `/boards/${board.id}/members/${bot}`, ALICE, { role: "editor" });
+      await call(PORT_ONE, "PUT", `/boards/${board.id}/members/agent/${bot}`, ALICE, { role: "editor" });
     }
     return (await call(PORT_ONE, "POST", "/tasks", ALICE, { boardId: board.id, title: "Write spec" })).body!.id;
   }

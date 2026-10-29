@@ -51,8 +51,8 @@
     "ci:local": "npm run build && npm run typecheck && npm test"
   },
   "dependencies": {
-    "agentic-identity": "^0.3.0",
     "@modelcontextprotocol/sdk": "^1.12.0",
+    "agentic-identity": "^0.4.0",
     "hono": "^4.13.14",
     "zod": "^3.25.0"
   },

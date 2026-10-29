@@ -175,13 +175,14 @@ export function createMcpServer(tasks: Tasks): McpServer {
     "Give a principal a role on a board: viewer, commenter, editor, or owner. Needs the owner role.",
     {
       boardId: z.string(),
+      subjectKind: z.enum(["human", "agent"]),
       subjectId: z.string(),
       role: z.enum(["viewer", "commenter", "editor", "owner"]),
       principal: actor,
     },
-    async ({ boardId, subjectId, role, principal }) =>
+    async ({ boardId, subjectKind, subjectId, role, principal }) =>
       respond(async () => {
-        await tasks.shareBoard(boardId, subjectId, role as Role, ctx(principal));
+        await tasks.shareBoard(boardId, { kind: subjectKind, id: subjectId }, role as Role, ctx(principal));
         return { shared: true };
       }),
   );
@@ -189,11 +190,22 @@ export function createMcpServer(tasks: Tasks): McpServer {
   server.tool(
     "unshare_board",
     "Remove a principal's role on a board. Needs the owner role. The last owner stays.",
-    { boardId: z.string(), subjectId: z.string(), principal: actor },
-    async ({ boardId, subjectId, principal }) =>
+    { boardId: z.string(), subjectKind: z.enum(["human", "agent"]), subjectId: z.string(), principal: actor },
+    async ({ boardId, subjectKind, subjectId, principal }) =>
       respond(async () => {
-        await tasks.unshareBoard(boardId, subjectId, ctx(principal));
+        await tasks.unshareBoard(boardId, { kind: subjectKind, id: subjectId }, ctx(principal));
         return { unshared: true };
+      }),
+  );
+
+  server.tool(
+    "erase_board",
+    "Erase a board with its tasks, notes, and grants. Needs the owner role. It cannot be undone.",
+    { boardId: z.string(), principal: actor },
+    async ({ boardId, principal }) =>
+      respond(async () => {
+        await tasks.eraseBoard(boardId, ctx(principal));
+        return { erased: true };
       }),
   );
 

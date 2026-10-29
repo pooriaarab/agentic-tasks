@@ -58,7 +58,7 @@ async function openTask(): Promise<{ boardId: string; columnId: string; taskId: 
     await call("POST", `/boards/${board.id}/columns`, ALICE, { name: "Todo" })
   ).body as { columns: { id: string }[] };
   const columnId = withColumn.columns[0]!.id;
-  await call("PUT", `/boards/${board.id}/members/bot-1`, ALICE, { role: "editor" });
+  await call("PUT", `/boards/${board.id}/members/agent/bot-1`, ALICE, { role: "editor" });
   const task = (
     await call("POST", "/tasks", ALICE, { boardId: board.id, title: "Write spec" })
   ).body as { id: string };
@@ -147,11 +147,20 @@ describe("agentic-tasks Worker over wrangler dev", () => {
   it("shares a board by role over HTTP and takes the role away", async () => {
     const { boardId, taskId } = await openTask();
     const carol = { "x-principal-id": "carol", "x-principal-kind": "human" };
-    expect((await call("PUT", `/boards/${boardId}/members/carol`, ALICE, { role: "viewer" })).status).toBe(200);
+    expect((await call("PUT", `/boards/${boardId}/members/human/carol`, ALICE, { role: "viewer" })).status).toBe(200);
     expect((await call("GET", `/tasks/${taskId}`, carol)).status).toBe(200);
     expect(errorCodeOf(await call("POST", `/tasks/${taskId}/claim`, carol, {}))).toBe("FORBIDDEN");
-    expect((await call("DELETE", `/boards/${boardId}/members/carol`, ALICE)).status).toBe(200);
+    expect((await call("DELETE", `/boards/${boardId}/members/human/carol`, ALICE)).status).toBe(200);
     expect((await call("GET", `/tasks/${taskId}`, carol)).status).toBe(403);
+  });
+
+  it("erases a board over HTTP and only an owner may", async () => {
+    const { boardId, taskId } = await openTask();
+    const carol = { "x-principal-id": "carol", "x-principal-kind": "human" };
+    await call("PUT", `/boards/${boardId}/members/human/carol`, ALICE, { role: "editor" });
+    expect((await call("DELETE", `/boards/${boardId}`, carol)).status).toBe(403);
+    expect((await call("DELETE", `/boards/${boardId}`, ALICE)).status).toBe(200);
+    expect((await call("GET", `/tasks/${taskId}`, ALICE)).status).toBe(404);
   });
 
   it("refuses a body that is not JSON with 400 INVALID_INPUT", async () => {

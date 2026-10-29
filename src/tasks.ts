@@ -12,12 +12,15 @@ import {
 import {
   assertId,
   createSharing,
+  EraseRefusedError,
+  SUBJECT_KINDS,
   type Action,
   type Doc,
   type PrincipalContext,
   type Query,
   type Role,
   type Store,
+  type Subject,
   type StoreOps,
 } from "agentic-identity";
 
@@ -85,8 +88,11 @@ export interface Tasks {
   release(id: string, ctx: PrincipalContext): Promise<Task>;
   progress(id: string, note: string, ctx: PrincipalContext): Promise<ProgressEntry>;
   listProgress(id: string, ctx: PrincipalContext): Promise<ProgressEntry[]>;
-  shareBoard(boardId: string, subjectId: string, role: Role, ctx: PrincipalContext): Promise<void>;
-  unshareBoard(boardId: string, subjectId: string, ctx: PrincipalContext): Promise<void>;
+  // A grant is keyed on kind and id: a person and an agent with one id are two subjects.
+  shareBoard(boardId: string, subject: Subject, role: Role, ctx: PrincipalContext): Promise<void>;
+  unshareBoard(boardId: string, subject: Subject, ctx: PrincipalContext): Promise<void>;
+  // Erases the board, its tasks and notes, and its grants. Needs the owner role.
+  eraseBoard(boardId: string, ctx: PrincipalContext): Promise<void>;
 }
 
 function invalid(message: string): TaskError {
@@ -125,9 +131,19 @@ async function shared<T>(work: () => Promise<T>): Promise<T> {
   } catch (error) {
     if (!(error instanceof Error) || error instanceof TaskError) throw error;
     if (error.message === "forbidden") throw new TaskError("FORBIDDEN", "not allowed");
+    if (error instanceof EraseRefusedError) throw invalid(error.message);
     if (/^(invalid|the last owner)/.test(error.message)) throw invalid(error.message);
     throw error;
   }
+}
+
+// The kind of a subject is never defaulted. Only a person or an agent holds a role.
+function requireSubject(subject: unknown): asserts subject is Subject {
+  const { kind, id } = (subject ?? {}) as Partial<Subject>;
+  if (!SUBJECT_KINDS.includes(kind as Subject["kind"])) {
+    throw invalid(`subject kind must be one of ${SUBJECT_KINDS.join(", ")}`);
+  }
+  if (typeof id !== "string" || id === "") throw invalid("subject id must be a non-empty string");
 }
 
 function requireText(value: unknown, label: string): string {
@@ -602,20 +618,45 @@ export function createTasks(options: TasksOptions): Tasks {
       return rows.sort((a, b) => rank(a) - rank(b) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     },
 
-    async shareBoard(boardId, subjectId, role, ctx) {
+    async shareBoard(boardId, subject, role, ctx) {
+      requireSubject(subject);
       await authorize(ctx, "admin", boardId);
       // The last-owner check is in the grant transaction of agentic-identity,
       // which counts the owners when it demotes one. This rule is separate: an
       // owner cannot lower their own role. Use unshare.
-      if (role !== "owner" && subjectId === ctx.chain[0]?.id) {
+      if (role !== "owner" && subject.id === ctx.chain[0]?.id && subject.kind === ctx.chain[0]?.kind) {
         throw invalid("an owner cannot lower their own role. Make another owner first, then unshare");
       }
-      await shared(() => sharing.grant(ctx, boardId, subjectId, role));
+      await shared(() => sharing.grant(ctx, boardId, subject, role));
     },
 
-    async unshareBoard(boardId, subjectId, ctx) {
+    async unshareBoard(boardId, subject, ctx) {
+      requireSubject(subject);
       await authorize(ctx, "admin", boardId);
-      await shared(() => sharing.revokeGrant(ctx, boardId, subjectId));
+      await shared(() => sharing.revokeGrant(ctx, boardId, subject));
+    },
+
+    // The board row goes first, so no task can join during the erase. The grants
+    // go last, so a failed erase can run again: the owner grant still lets the
+    // owner in, and a missing board row does not stop the retry. A refused
+    // deleteResource (too many owners) leaves the board with no tasks.
+    async eraseBoard(boardId, ctx) {
+      assertContext(ctx);
+      if (!(await sharing.can(ctx, "admin", boardId)).allowed) {
+        if (await getRow<Board>(store, "boards", boardId)) {
+          throw new TaskError("FORBIDDEN", `not allowed to admin board ${boardId}`);
+        }
+        throw new TaskError("NOT_FOUND", `board ${boardId} does not exist`);
+      }
+      await store.delete("boards", boardId);
+      const tasksOfBoard = await listRows<Task>(store, "tasks", { boardId });
+      for (const task of tasksOfBoard) {
+        for (const note of await listRows<ProgressEntry>(store, "progress", { taskId: task.id })) {
+          await store.delete("progress", note.id);
+        }
+        await store.delete("tasks", task.id);
+      }
+      await shared(() => sharing.deleteResource(ctx, boardId));
     },
   };
 }
