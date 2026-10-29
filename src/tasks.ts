@@ -9,7 +9,7 @@ import {
   type Task,
   type TaskStatus,
 } from "./model.js";
-import type { Store, Tx } from "./store.js";
+import { assertId, type Doc, type Query, type Store, type StoreOps } from "agentic-identity";
 
 const DEFAULT_CLAIM_TTL_MS = 30 * 60 * 1000;
 
@@ -116,20 +116,56 @@ function normalizeDueDate(value: unknown): string | null {
   return value;
 }
 
-function requireBoard(tx: Tx, id: string) {
-  const board = tx.get<Board>("boards", id);
+type Collection = "boards" | "tasks" | "progress";
+
+// An id that the store would refuse cannot name a row, so it names nothing.
+async function getRow<T>(ops: StoreOps, collection: Collection, id: string): Promise<T | undefined> {
+  try {
+    assertId(id);
+  } catch {
+    return undefined;
+  }
+  return ((await ops.get(collection, id)) as T | null) ?? undefined;
+}
+
+function putRow(ops: StoreOps, collection: Collection, row: { id: string }): Promise<void> {
+  return ops.put(collection, row.id, row as unknown as Doc);
+}
+
+// Reads every page of a query. Equality filters only, so a Firestore adapter fits.
+async function listRows<T>(
+  ops: StoreOps,
+  collection: Collection,
+  where: Record<string, string | undefined>,
+  orderBy?: Query["orderBy"],
+): Promise<T[]> {
+  const filter = Object.fromEntries(
+    Object.entries(where).filter((entry): entry is [string, string] => entry[1] !== undefined),
+  );
+  const rows: T[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await ops.query(collection, { where: filter, orderBy, cursor });
+    rows.push(...page.items.map((item) => item.data as unknown as T));
+    cursor = page.nextCursor;
+  } while (cursor !== undefined);
+  return rows;
+}
+
+async function requireBoard(ops: StoreOps, id: string): Promise<Board> {
+  const board = await getRow<Board>(ops, "boards", id);
   if (!board) throw new TaskError("NOT_FOUND", `board ${id} does not exist`);
   return board;
 }
 
-function requireTask(tx: Tx, id: string): Task {
-  const task = tx.get<Task>("tasks", id);
+async function requireTask(ops: StoreOps, id: string): Promise<Task> {
+  const task = await getRow<Task>(ops, "tasks", id);
   if (!task) throw new TaskError("NOT_FOUND", `task ${id} does not exist`);
   return task;
 }
 
 function requireOpen(task: Task): void {
-  if (task.status === "closed") {
+  if (task.status !== "open") {
     throw new TaskError("TASK_CLOSED", `task ${task.id} is closed`);
   }
 }
@@ -144,11 +180,41 @@ function samePrincipal(a: Principal, b: Principal): boolean {
   return a.id === b.id && a.kind === b.kind;
 }
 
+// Only the exact form that toISOString writes is a time. Date.parse also reads
+// text such as "1" as a past date, which would free a claim that is corrupt.
+const STORED_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
+function parseStoredTime(text: string): number {
+  if (!STORED_TIME.test(text)) return Number.NaN;
+  const ms = Date.parse(text);
+  return Number.isFinite(ms) && new Date(ms).toISOString() === text ? ms : Number.NaN;
+}
+
+// A claim read from storage may hold any value. Anything but a holder with
+// an id and kind, and an expiry text, is corrupt.
+function isWellFormed(claim: unknown): claim is Claim {
+  const candidate = claim as Partial<Claim> | null;
+  return (
+    typeof candidate === "object" &&
+    candidate !== null &&
+    typeof candidate.holder?.id === "string" &&
+    typeof candidate.holder.kind === "string" &&
+    typeof candidate.expiresAt === "string"
+  );
+}
+
 // A claim is live until its expiry instant. At the instant itself it has expired.
 // An expiry that does not parse counts as live, so a corrupt claim blocks others.
 function isLive(claim: Claim, nowMs: number): boolean {
-  const expiresMs = Date.parse(claim.expiresAt);
+  const expiresMs = parseStoredTime(claim.expiresAt);
   return !Number.isFinite(expiresMs) || expiresMs > nowMs;
+}
+
+// True when another principal holds the task. A corrupt claim counts as held.
+function heldByOther(claim: unknown, who: Principal, nowMs: number): boolean {
+  if (claim === undefined) return false;
+  if (!isWellFormed(claim)) return true;
+  return isLive(claim, nowMs) && !samePrincipal(claim.holder, who);
 }
 
 function nextPosition(siblings: Task[]): number {
@@ -178,27 +244,25 @@ export function createTasks(options: TasksOptions): Tasks {
         createdAt: at,
         updatedAt: at,
       };
-      return store.transaction((tx) => {
-        tx.put("boards", board);
-        return board;
-      });
+      await putRow(store, "boards", board);
+      return board;
     },
 
     async getBoard(id) {
-      return store.transaction((tx) => requireBoard(tx, id));
+      return requireBoard(store, id);
     },
 
     async addColumn(boardId, name, actor) {
       assertPrincipal(actor);
       const columnName = requireText(name, "column name");
-      return store.transaction((tx) => {
-        const board = requireBoard(tx, boardId);
+      return store.transaction(async (tx) => {
+        const board = await requireBoard(tx, boardId);
         if (board.columns.some((column) => column.name === columnName)) {
           throw invalid(`board ${boardId} already has a column named ${columnName}`);
         }
         board.columns.push({ id: crypto.randomUUID(), name: columnName });
         board.updatedAt = clock().toISOString();
-        tx.put("boards", board);
+        await putRow(tx, "boards", board);
         return board;
       });
     },
@@ -211,8 +275,8 @@ export function createTasks(options: TasksOptions): Tasks {
       const assignees = normalizeAssignees(input.assignees ?? []);
       const description = input.description ?? "";
       if (typeof description !== "string") throw invalid("description must be a string");
-      return store.transaction((tx) => {
-        const board = requireBoard(tx, input.boardId);
+      return store.transaction(async (tx) => {
+        const board = await requireBoard(tx, input.boardId);
         if (board.columns.length === 0) {
           throw invalid(`board ${board.id} has no columns`);
         }
@@ -225,7 +289,9 @@ export function createTasks(options: TasksOptions): Tasks {
           title,
           description,
           columnId,
-          position: nextPosition(tx.list<Task>("tasks", { boardId: board.id, columnId })),
+          position: nextPosition(
+            await listRows<Task>(tx, "tasks", { boardId: board.id, columnId }),
+          ),
           labels,
           dueDate,
           assignees,
@@ -235,24 +301,21 @@ export function createTasks(options: TasksOptions): Tasks {
           updatedBy: { id: actor.id, kind: actor.kind },
           updatedAt: at,
         };
-        tx.put("tasks", task);
+        await putRow(tx, "tasks", task);
         return task;
       });
     },
 
     async getTask(id) {
-      return store.transaction((tx) => requireTask(tx, id));
+      return requireTask(store, id);
     },
 
     async listTasks(filter = {}) {
-      return store.transaction((tx) =>
-        tx
-          .list<Task>("tasks", {
-            boardId: filter.boardId,
-            columnId: filter.columnId,
-            status: filter.status,
-          })
-          .sort((a, b) => a.position - b.position),
+      return listRows<Task>(
+        store,
+        "tasks",
+        { boardId: filter.boardId, columnId: filter.columnId, status: filter.status },
+        { field: "position" },
       );
     },
 
@@ -261,25 +324,25 @@ export function createTasks(options: TasksOptions): Tasks {
       if (target.position !== undefined && !Number.isInteger(target.position)) {
         throw invalid("position must be an integer");
       }
-      return store.transaction((tx) => {
-        const task = requireTask(tx, id);
+      return store.transaction(async (tx) => {
+        const task = await requireTask(tx, id);
         requireOpen(task);
-        requireColumn(requireBoard(tx, task.boardId), target.columnId);
-        const siblings = tx
-          .list<Task>("tasks", { boardId: task.boardId, columnId: target.columnId })
-          .filter((other) => other.id !== task.id);
+        requireColumn(await requireBoard(tx, task.boardId), target.columnId);
+        const siblings = (
+          await listRows<Task>(tx, "tasks", { boardId: task.boardId, columnId: target.columnId })
+        ).filter((other) => other.id !== task.id);
         task.columnId = target.columnId;
         task.position = target.position ?? nextPosition(siblings);
         touch(task, actor, clock().toISOString());
-        tx.put("tasks", task);
+        await putRow(tx, "tasks", task);
         return task;
       });
     },
 
     async updateTask(id, patch, actor) {
       assertPrincipal(actor);
-      return store.transaction((tx) => {
-        const task = requireTask(tx, id);
+      return store.transaction(async (tx) => {
+        const task = await requireTask(tx, id);
         requireOpen(task);
         if (patch.title !== undefined) task.title = requireText(patch.title, "title");
         if (patch.description !== undefined) {
@@ -294,78 +357,70 @@ export function createTasks(options: TasksOptions): Tasks {
           task.assignees = normalizeAssignees(patch.assignees);
         }
         touch(task, actor, clock().toISOString());
-        tx.put("tasks", task);
+        await putRow(tx, "tasks", task);
         return task;
       });
     },
 
     async closeTask(id, actor) {
       assertPrincipal(actor);
-      return store.transaction((tx) => {
-        const task = requireTask(tx, id);
+      return store.transaction(async (tx) => {
+        const task = await requireTask(tx, id);
         requireOpen(task);
         const now = clock();
         const at = now.toISOString();
-        const claim = task.claim;
-        if (
-          claim !== undefined &&
-          isLive(claim, now.getTime()) &&
-          !samePrincipal(claim.holder, actor)
-        ) {
-          throw new TaskError(
-            "CLAIM_HELD",
-            `task ${id} is held by another principal until ${claim.expiresAt}`,
-          );
+        if (heldByOther(task.claim, actor, now.getTime())) {
+          throw new TaskError("CLAIM_HELD", `task ${id} is held by another principal`);
         }
         task.status = "closed";
         task.closedAt = at;
         delete task.claim;
         touch(task, actor, at);
-        tx.put("tasks", task);
+        await putRow(tx, "tasks", task);
         return task;
       });
     },
 
+    // The read and the write sit in one transaction. The store checks that the
+    // task did not change in between, and runs the body again when it did. So two
+    // Worker instances on one database cannot both take the claim.
     async claim(id, principal, options = {}) {
       assertPrincipal(principal);
       const ttlMs = options.ttlMs ?? DEFAULT_CLAIM_TTL_MS;
       if (!Number.isInteger(ttlMs) || ttlMs <= 0) {
         throw invalid("ttlMs must be a positive integer");
       }
-      return store.transaction((tx) => {
-        const task = requireTask(tx, id);
+      return store.transaction(async (tx) => {
+        const task = await requireTask(tx, id);
         requireOpen(task);
         const now = clock();
         const nowIso = now.toISOString();
+        if (heldByOther(task.claim, principal, now.getTime())) {
+          throw new TaskError("CLAIM_HELD", `task ${id} is held by another principal`);
+        }
         const current = task.claim;
         const live = current !== undefined && isLive(current, now.getTime());
-        if (live && !samePrincipal(current.holder, principal)) {
-          throw new TaskError(
-            "CLAIM_HELD",
-            `task ${id} is held by another principal until ${current.expiresAt}`,
-          );
-        }
         task.claim = {
           holder: { id: principal.id, kind: principal.kind },
-          claimedAt: live ? current.claimedAt : nowIso,
+          claimedAt: live && typeof current.claimedAt === "string" ? current.claimedAt : nowIso,
           expiresAt: new Date(now.getTime() + ttlMs).toISOString(),
         };
         touch(task, principal, nowIso);
-        tx.put("tasks", task);
+        await putRow(tx, "tasks", task);
         return task;
       });
     },
 
     async release(id, principal) {
       assertPrincipal(principal);
-      return store.transaction((tx) => {
-        const task = requireTask(tx, id);
-        if (task.claim === undefined || !samePrincipal(task.claim.holder, principal)) {
+      return store.transaction(async (tx) => {
+        const task = await requireTask(tx, id);
+        if (!isWellFormed(task.claim) || !samePrincipal(task.claim.holder, principal)) {
           throw new TaskError("NOT_HOLDER", `only the holder can release task ${id}`);
         }
         delete task.claim;
         touch(task, principal, clock().toISOString());
-        tx.put("tasks", task);
+        await putRow(tx, "tasks", task);
         return task;
       });
     },
@@ -373,28 +428,26 @@ export function createTasks(options: TasksOptions): Tasks {
     async progress(id, note, actor) {
       assertPrincipal(actor);
       const text = requireText(note, "note");
-      return store.transaction((tx) => {
-        const task = requireTask(tx, id);
+      return store.transaction(async (tx) => {
+        const task = await requireTask(tx, id);
         requireOpen(task);
+        const earlier = await listRows<ProgressEntry>(tx, "progress", { taskId: task.id });
         const entry: ProgressEntry = {
           id: crypto.randomUUID(),
           taskId: task.id,
+          seq: Math.max(0, ...earlier.map((other) => other.seq).filter(Number.isSafeInteger)) + 1,
           note: text,
           by: { id: actor.id, kind: actor.kind },
           at: clock().toISOString(),
         };
-        tx.put("progress", entry);
+        await putRow(tx, "progress", entry);
         return entry;
       });
     },
 
     async listProgress(id) {
-      return store.transaction((tx) => {
-        requireTask(tx, id);
-        return tx
-          .list<ProgressEntry>("progress", { taskId: id })
-          .sort((a, b) => a.at.localeCompare(b.at));
-      });
+      await requireTask(store, id);
+      return listRows<ProgressEntry>(store, "progress", { taskId: id }, { field: "seq" });
     },
   };
 }

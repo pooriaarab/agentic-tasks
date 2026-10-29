@@ -1,6 +1,6 @@
 import { Hono, type Context } from "hono";
 import { TaskError, type Principal, type PrincipalKind, type TaskErrorCode, type TaskStatus } from "./model.js";
-import { createMemoryStore } from "./store.js";
+import { createMemoryStore } from "agentic-identity";
 import { createTasks, type Tasks } from "./tasks.js";
 
 const STATUS_BY_CODE: Record<TaskErrorCode, 400 | 403 | 404 | 409> = {

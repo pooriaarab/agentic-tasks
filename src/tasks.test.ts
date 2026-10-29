@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { TaskError, type Claim, type Principal, type Task } from "./model.js";
-import { createMemoryStore, type Store } from "./store.js";
+import { createMemoryStore, type Store } from "agentic-identity";
 import { createFileStore } from "./file-store.js";
 import { createTasks, type Tasks } from "./tasks.js";
 
@@ -81,11 +81,11 @@ describe.each(backends)("claim rules on the %s store", (_name, open) => {
 
   // Writes a claim the API would never write, as a hand-edited file could hold.
   async function writeRawClaim(id: string, claim: Claim): Promise<void> {
-    await h.store.transaction((tx) => {
-      const task = tx.get<Task>("tasks", id);
+    await h.store.transaction(async (tx) => {
+      const task = (await tx.get("tasks", id)) as unknown as Task | null;
       if (!task) throw new Error("fixture task is missing");
-      const corrupt: Task = { ...task, claim };
-      tx.put("tasks", corrupt);
+      const corrupt = { ...task, claim };
+      await tx.put("tasks", id, corrupt as unknown as Record<string, never>);
     });
   }
 
@@ -249,6 +249,64 @@ describe.each(backends)("claim rules on the %s store", (_name, open) => {
     expect((await h.tasks.getTask(id)).claim?.holder).toEqual(ALICE);
   });
 
+  it("counts a claim with a non-text expiry as live", async () => {
+    const id = await openTask();
+    await writeRawClaim(id, {
+      holder: ALICE,
+      claimedAt: "2026-10-28T10:00:00.000Z",
+      expiresAt: 1 as unknown as string,
+    });
+    await expect(
+      errorCode(h.tasks.claim(id, BOT, { ttlMs: TEN_MINUTES })),
+    ).resolves.toBe("CLAIM_HELD");
+    await expect(errorCode(h.tasks.closeTask(id, BOT))).resolves.toBe("CLAIM_HELD");
+  });
+
+  it.each(["1", "0", "foo 1", "2026-10-28"])(
+    "counts a claim whose expiry %j is not the stored time format as live",
+    async (expiresAt) => {
+      const id = await openTask();
+      await writeRawClaim(id, { holder: ALICE, claimedAt: "2026-10-28T10:00:00.000Z", expiresAt });
+      await expect(
+        errorCode(h.tasks.claim(id, BOT, { ttlMs: TEN_MINUTES })),
+      ).resolves.toBe("CLAIM_HELD");
+      await expect(errorCode(h.tasks.closeTask(id, BOT))).resolves.toBe("CLAIM_HELD");
+    },
+  );
+
+  it("refuses a task whose stored status is not open", async () => {
+    const id = await openTask();
+    await h.store.transaction(async (tx) => {
+      const task = (await tx.get("tasks", id))!;
+      await tx.put("tasks", id, { ...task, status: "Closed" });
+    });
+    await expect(errorCode(h.tasks.claim(id, BOT))).resolves.toBe("TASK_CLOSED");
+    await expect(
+      errorCode(h.tasks.updateTask(id, { title: "x" }, BOT)),
+    ).resolves.toBe("TASK_CLOSED");
+  });
+
+  it("writes a new claimedAt when a renewed claim has a bad one", async () => {
+    const id = await openTask();
+    await writeRawClaim(id, {
+      holder: ALICE,
+      claimedAt: 42 as unknown as string,
+      expiresAt: "2026-10-28T10:05:00.000Z",
+    });
+    const renewed = await h.tasks.claim(id, ALICE, { ttlMs: TEN_MINUTES });
+    expect(renewed.claim?.claimedAt).toBe("2026-10-28T10:00:00.000Z");
+  });
+
+  it("reports a claim that is not an object as held, with an error code", async () => {
+    const id = await openTask();
+    await writeRawClaim(id, null as unknown as Claim);
+    await expect(
+      errorCode(h.tasks.claim(id, BOT, { ttlMs: TEN_MINUTES })),
+    ).resolves.toBe("CLAIM_HELD");
+    await expect(errorCode(h.tasks.closeTask(id, BOT))).resolves.toBe("CLAIM_HELD");
+    await expect(errorCode(h.tasks.release(id, BOT))).resolves.toBe("NOT_HOLDER");
+  });
+
   it("lets exactly one of two simultaneous claims succeed", async () => {
     const id = await openTask();
     const results = await Promise.allSettled([
@@ -382,5 +440,30 @@ describe.each(backends)("boards, columns, and tasks on the %s store", (_name, op
     await expect(
       errorCode(h.tasks.updateTask(task.id, { dueDate: "2026-02-30" }, ALICE)),
     ).resolves.toBe("INVALID_INPUT");
+  });
+});
+
+describe("claims across two stores on one file", () => {
+  it("lets exactly one of many parallel claims through", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "agentic-tasks-two-"));
+    try {
+      const file = join(dir, "tasks.json");
+      const one = createTasks({ store: createFileStore(file) });
+      const two = createTasks({ store: createFileStore(file) });
+      const board = await one.createBoard({ title: "Sprint" }, ALICE);
+      await one.addColumn(board.id, "Todo", ALICE);
+      const task = await one.createTask({ boardId: board.id, title: "Write spec" }, ALICE);
+      const claimants = Array.from({ length: 8 }, (_, i): Principal => ({
+        id: `bot-${i}`,
+        kind: "agent_of_human",
+      }));
+      const codes = await Promise.all(
+        claimants.map((who, i) => errorCode((i % 2 === 0 ? one : two).claim(task.id, who))),
+      );
+      expect(codes.filter((code) => code === "NO_ERROR")).toHaveLength(1);
+      expect(codes.filter((code) => code === "CLAIM_HELD")).toHaveLength(7);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
