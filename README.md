@@ -253,6 +253,22 @@ Workers or principals.
 The CLI, the MCP server, and `agentic-tasks/client` do not need them. The web UI that the Worker serves
 uses the same components.
 
+## Run locally
+
+```sh
+git clone https://github.com/pooriaarab/agentic-tasks
+cd agentic-tasks
+npm install && npm run dev
+```
+
+`bun install && bun run dev` works too. The `dev` script builds the package, then starts `wrangler dev` on <http://localhost:8791>. Wrangler keeps a local D1 database and sends no telemetry.
+
+```sh
+curl -i http://localhost:8791/api/v1/tasks/health   # 200
+```
+
+`npm run dev:smoke` does the same check by itself: it starts the dev server, waits for `/api/v1/tasks/health` to answer 200, and stops the server. CI runs it as the "dev smoke" step. Each agentic package uses its own default port, so two dev servers can run side by side. To use another port, run `npx wrangler dev --port <n>`.
+
 ## Develop
 
 ```sh

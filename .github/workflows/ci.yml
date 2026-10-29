@@ -24,5 +24,7 @@ jobs:
       - run: npm run build
       - run: npm run typecheck
       - run: npm test
+      - name: dev smoke
+        run: npm run dev:smoke
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
