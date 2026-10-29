@@ -13,7 +13,7 @@ Task boards where people and agents claim and finish work.
 ## Faces
 
 - SDK: `createTasks({ store })` from `agentic-tasks`.
-- CLI: `agentic-tasks <command> --as <id> --kind <kind> [--file <path>]`. Every command needs `--as` and `--kind`; `share` and `unshare` give and take roles; the kind is never defaulted. Output is JSON.
+- CLI: `agentic-tasks <command> --as <id> --kind <kind> [--file <path>]`. Every command needs `--as` and `--kind`; `share` and `unshare` give and take roles; `access`, `invite`, `link`, and `unlink` list and make invites and share links (owner only); the kind is never defaulted. Output is JSON.
 - MCP: `agentic-tasks mcp`. Each tool names its `principal`.
 - Store: tasks run on the `Store` port from `agentic-identity`. Tests use its memory adapter. The CLI uses `createFileStore`, which passes the `Store` contract suite.
 - The Worker keeps data in the D1 database bound as `DB`. `TASKS_REGION` (`eu` or `us`) is required. The schema is in `migrations/`.

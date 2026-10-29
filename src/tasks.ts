@@ -13,10 +13,12 @@ import {
   assertId,
   createSharing,
   EraseRefusedError,
+  ROLES,
   SUBJECT_KINDS,
   type Action,
   type Doc,
   type Grant,
+  type InviteSummary,
   type PrincipalContext,
   type Query,
   type Role,
@@ -61,6 +63,34 @@ export interface MoveTarget {
   position?: number;
 }
 
+export interface InviteInput {
+  role: Exclude<Role, "owner">;
+  // Give email or handle, not both.
+  email?: string;
+  handle?: string;
+  expiresInMs?: number;
+}
+
+export interface LinkInput {
+  role: Exclude<Role, "owner">;
+  signedInOnly?: boolean;
+  expiresInMs?: number;
+}
+
+export interface LinkSummary {
+  id: string;
+  role: Role;
+  signedInOnly: boolean;
+  expiresAt?: number;
+  revokedAt?: number;
+}
+
+export interface BoardAccess {
+  grants: Grant[];
+  invites: InviteSummary[];
+  links: LinkSummary[];
+}
+
 export interface ClaimOptions {
   ttlMs?: number;
 }
@@ -92,6 +122,14 @@ export interface Tasks {
   // A grant is keyed on kind and id: a person and an agent with one id are two subjects.
   shareBoard(boardId: string, subject: Subject, role: Role, ctx: PrincipalContext): Promise<void>;
   unshareBoard(boardId: string, subject: Subject, ctx: PrincipalContext): Promise<void>;
+  // The grants, the invites, and the links of a board. Needs the owner role. An invite shows
+  // no email, and a link shows no token: the token shows once, when the link is made.
+  listAccess(boardId: string, ctx: PrincipalContext): Promise<BoardAccess>;
+  // Invites a person by email or an agent by handle. The role is not owner. Needs the owner role.
+  inviteToBoard(boardId: string, input: InviteInput, ctx: PrincipalContext): Promise<{ id: string }>;
+  // Makes a share link. The token shows once, and only its hash is stored. Needs the owner role.
+  createBoardLink(boardId: string, input: LinkInput, ctx: PrincipalContext): Promise<{ id: string; token: string }>;
+  revokeBoardLink(boardId: string, linkId: string, ctx: PrincipalContext): Promise<void>;
   // Erases the board, its tasks and notes, and its grants. Needs the owner role.
   eraseBoard(boardId: string, ctx: PrincipalContext): Promise<void>;
   // Deletes one task and its notes. Needs the editor role. While another principal
@@ -150,7 +188,7 @@ async function shared<T>(work: () => Promise<T>): Promise<T> {
     if (!(error instanceof Error) || error instanceof TaskError) throw error;
     if (error.message === "forbidden") throw new TaskError("FORBIDDEN", "not allowed");
     if (error instanceof EraseRefusedError) throw invalid(error.message);
-    if (/^(invalid|the last owner)/.test(error.message)) throw invalid(error.message);
+    if (/^(invalid|the last owner|give an email|expiresInMs|expiresAt)/.test(error.message)) throw invalid(error.message);
     throw error;
   }
 }
@@ -169,6 +207,23 @@ function requireText(value: unknown, label: string): string {
     throw invalid(`${label} must be a non-empty string`);
   }
   return value.trim();
+}
+
+const SHARE_ROLES = ROLES.filter((role): role is Exclude<Role, "owner"> => role !== "owner");
+
+function requireShareRole(value: unknown): Exclude<Role, "owner"> {
+  if (!(SHARE_ROLES as readonly unknown[]).includes(value)) {
+    throw invalid(`role must be one of ${SHARE_ROLES.join(", ")}`);
+  }
+  return value as Exclude<Role, "owner">;
+}
+
+function requireLifetime(value: unknown): number | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0) {
+    throw invalid("expiresInMs must be a whole number of milliseconds above 0");
+  }
+  return value;
 }
 
 function normalizeLabels(labels: unknown): string[] {
@@ -197,7 +252,7 @@ function normalizeDueDate(value: unknown): string | null {
   return value;
 }
 
-type Collection = "boards" | "tasks" | "progress" | "counters" | "grants";
+type Collection = "boards" | "tasks" | "progress" | "counters" | "grants" | "invites" | "links";
 
 // An id that the store would refuse cannot name a row, so it names nothing.
 async function getRow<T>(ops: StoreOps, collection: Collection, id: string): Promise<T | undefined> {
@@ -721,6 +776,92 @@ export function createTasks(options: TasksOptions): Tasks {
       requireSubject(subject);
       await authorize(ctx, "admin", boardId);
       await shared(() => sharing.revokeGrant(ctx, boardId, subject));
+    },
+
+    async listAccess(boardId, ctx) {
+      await authorize(ctx, "admin", boardId);
+      // Every page, so a long list is not cut off.
+      const pages = async <T>(read: (cursor?: string) => Promise<{ items: T[]; nextCursor?: string }>) => {
+        const items: T[] = [];
+        let cursor: string | undefined;
+        do {
+          const page = await read(cursor);
+          items.push(...page.items);
+          cursor = page.nextCursor;
+        } while (cursor !== undefined);
+        return items;
+      };
+      const [grants, invites, links] = await shared(async () =>
+        Promise.all([
+          pages(async (cursor) => {
+            const page = await sharing.listGrants(ctx, boardId, { limit: 200, ...(cursor === undefined ? {} : { cursor }) });
+            return { items: page.grants, nextCursor: page.nextCursor };
+          }),
+          pages(async (cursor) => {
+            const page = await sharing.listInvites(ctx, boardId, { limit: 200, ...(cursor === undefined ? {} : { cursor }) });
+            return { items: page.invites, nextCursor: page.nextCursor };
+          }),
+          listRows<Record<string, unknown>>(store, "links", { resourceId: boardId }),
+        ]),
+      );
+      return {
+        grants,
+        invites,
+        // The token hash stays in the store. Only the fields below leave it.
+        links: links.map((link) => ({
+          id: String(link.id),
+          role: link.role as Role,
+          signedInOnly: link.signedInOnly === true,
+          ...(typeof link.expiresAt === "number" ? { expiresAt: link.expiresAt } : {}),
+          // A revoke time that is not a time still counts as revoked. It shows as 0.
+          ...(link.revokedAt != null ? { revokedAt: typeof link.revokedAt === "number" ? link.revokedAt : 0 } : {}),
+        })),
+      };
+    },
+
+    async inviteToBoard(boardId, input, ctx) {
+      const role = requireShareRole(input?.role);
+      const expiresInMs = requireLifetime(input.expiresInMs);
+      if ((input.email === undefined) === (input.handle === undefined)) {
+        throw invalid(input.email === undefined ? "give an email or a handle" : "give an email or a handle, not both");
+      }
+      if (typeof (input.email ?? input.handle) !== "string") {
+        throw invalid("email and handle must be strings");
+      }
+      await authorize(ctx, "admin", boardId);
+      return shared(() =>
+        sharing.createInvite(ctx, boardId, {
+          role,
+          ...(input.email === undefined ? { handle: input.handle } : { email: input.email }),
+          ...(expiresInMs === undefined ? {} : { expiresInMs }),
+        }),
+      );
+    },
+
+    async createBoardLink(boardId, input, ctx) {
+      const role = requireShareRole(input?.role);
+      const expiresInMs = requireLifetime(input.expiresInMs);
+      if (input.signedInOnly !== undefined && typeof input.signedInOnly !== "boolean") {
+        throw invalid("signedInOnly must be true or false");
+      }
+      await authorize(ctx, "admin", boardId);
+      return shared(() =>
+        sharing.createLink(ctx, boardId, {
+          role,
+          signedInOnly: input.signedInOnly === true,
+          ...(expiresInMs === undefined ? {} : { expiresAt: clock().getTime() + expiresInMs }),
+        }),
+      );
+    },
+
+    async revokeBoardLink(boardId, linkId, ctx) {
+      await authorize(ctx, "admin", boardId);
+      const link = await getRow<{ resourceId?: string }>(store, "links", linkId);
+      if (link?.resourceId !== boardId) throw new TaskError("NOT_FOUND", `board ${boardId} has no link ${linkId}`);
+      // A revoked link keeps its first revoke time, and writes no second audit entry, when calls come one after another.
+      // Two calls at the same moment can both write: the link stays revoked, but its time moves.
+      if ((link as { revokedAt?: unknown }).revokedAt != null) return;
+      await shared(() => sharing.revokeLink(ctx, linkId));
     },
 
     // The board row goes first, so no task can join during the erase. The grants

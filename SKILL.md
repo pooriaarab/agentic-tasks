@@ -41,6 +41,9 @@ try {
 ```sh
 agentic-tasks board Sprint --columns Todo,Doing --as alice --kind human
 agentic-tasks share <boardId> bot-1 editor --subject-kind agent --as alice --kind human
+agentic-tasks invite <boardId> viewer --email ada@example.com --as alice --kind human
+agentic-tasks link <boardId> viewer --as alice --kind human
+agentic-tasks access <boardId> --as alice --kind human
 agentic-tasks new <boardId> "Write spec" --as alice --kind human
 agentic-tasks claim <taskId> --as bot-1 --kind agent_of_human
 agentic-tasks list --board <boardId> --status open --as bot-1 --kind agent_of_human

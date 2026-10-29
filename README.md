@@ -68,7 +68,7 @@ for, and its scopes. A board is a resource with roles. A call needs a role:
 | viewer | read the board, its tasks, and progress notes |
 | commenter | also add progress notes |
 | editor | also add columns, make, move, edit, claim, release, and close tasks |
-| owner | also share the board and take access away |
+| owner | also share the board, invite, make share links, list access, and take access away |
 
 The person who makes a board owns it. An agent that acts for a person gets that
 person's role, cut down by the scopes that its chain leaves. Every check writes
@@ -79,6 +79,25 @@ the MCP tools (`share_board`, `unshare_board`), or `PUT` and `DELETE` on
 and an id, so a person and an agent with one id are two subjects. The CLI needs
 `--subject-kind`. Erase a board, with its tasks, notes, and grants, with `eraseBoard`,
 `erase`, `erase_board`, or `DELETE /boards/:id`. Only an owner can. Listing tasks needs a `boardId`.
+
+Every sharing call needs the owner role:
+
+| Action | SDK | CLI | MCP tool | HTTP |
+|---|---|---|---|---|
+| Give a role | `shareBoard` | `share` | `share_board` | `PUT /boards/:id/members/:kind/:subjectId` |
+| Take a role | `unshareBoard` | `unshare` | `unshare_board` | `DELETE /boards/:id/members/:kind/:subjectId` |
+| List grants, invites, links | `listAccess` | `access` | `list_access` | `GET /boards/:id/access` |
+| Invite by email or handle | `inviteToBoard` | `invite` | `create_invite` | `POST /boards/:id/invites` |
+| Make a share link | `createBoardLink` | `link` | `create_link` | `POST /boards/:id/links` |
+| Revoke a share link | `revokeBoardLink` | `unlink` | `revoke_link` | `DELETE /boards/:id/links/:linkId` |
+
+An invite or a link gives viewer, commenter, or editor, never owner. Only a grant makes an
+owner. An invite names an email (a person) or a handle (an agent). A list shows no email.
+A link token shows once, in the reply that makes it. A list shows the link id, role,
+expiry, and revoke time, and never the token. `expiresInMs` (`--expires-in-ms`) sets how long an invite or
+link lives. `signedInOnly` (`--signed-in-only true`) limits a link to signed-in people. A link or
+an invite on its own does not change the board: accepting an invite and opening a link are
+part of `agentic-identity`.
 
 ## Lifecycle
 
@@ -117,7 +136,7 @@ try {
   `/api/v1/tasks` after any path prefix.
 - `token` is a bearer credential that the Worker accepts. `fetch` is optional.
 - One method for each route: `createBoard`, `getBoard`, `addColumn`, `shareBoard`,
-  `unshareBoard`, `eraseBoard`, `listBoards`, `exportData`, `deleteTask`, `createTask`, `listTasks`, `getTask`, `updateTask`,
+  `unshareBoard`, `listAccess`, `inviteToBoard`, `createBoardLink`, `revokeBoardLink`, `eraseBoard`, `listBoards`, `exportData`, `deleteTask`, `createTask`, `listTasks`, `getTask`, `updateTask`,
   `moveTask`, `claim`, `release`, `closeTask`, `progress`, and `listProgress`.
 - A refused call throws `TasksApiError` with the API error `code` and the HTTP `status`.
   A reply that is not an API error, or a success reply with the wrong shape, has the code `UNKNOWN`.
@@ -153,12 +172,12 @@ npm run deploy:demo
 - People and agents claim a task for up to one day. The holder or a board owner can release the claim.
 - Progress notes on a task.
 - Agent tools over MCP: create, get, list, move, update, claim, release, and close tasks, and add and list progress notes.
-- Board roles: viewer, commenter, editor, and owner. Share a board with a role.
+- Board roles: viewer, commenter, editor, and owner. Share a board with a role, invite by email or handle, and make share links.
 
 ## Not yet
 
 - Real-time updates. A person or an agent sees a change by someone else only when it reads the task or the list again.
-- Invites and share links. Board roles work now.
+- Accepting an invite and opening a share link in this package. Make and list them here. `agentic-identity` takes them.
 
 ## Surfaces
 
