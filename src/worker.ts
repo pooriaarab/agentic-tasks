@@ -191,6 +191,10 @@ export function createApp(resolve: Resolve, auth?: Auth | ((env: Bindings) => Au
     return c.json(await tasksOf(c).createBoard({ title: body.title ?? "" }, ctxOf(c)), 201);
   });
 
+  api.get("/boards", async (c) => c.json(await tasksOf(c).listBoards(ctxOf(c))));
+
+  api.get("/export", async (c) => c.json(await tasksOf(c).exportData(ctxOf(c))));
+
   api.get("/boards/:boardId", async (c) =>
     c.json(await tasksOf(c).getBoard(c.req.param("boardId"), ctxOf(c))),
   );
@@ -248,6 +252,11 @@ export function createApp(resolve: Resolve, auth?: Auth | ((env: Bindings) => Au
         ctxOf(c),
       ),
     );
+  });
+
+  api.delete("/tasks/:taskId", async (c) => {
+    await tasksOf(c).deleteTask(c.req.param("taskId"), ctxOf(c));
+    return c.json({ deleted: true });
   });
 
   api.get("/tasks/:taskId", async (c) => c.json(await tasksOf(c).getTask(c.req.param("taskId"), ctxOf(c))));

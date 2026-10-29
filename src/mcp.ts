@@ -209,6 +209,31 @@ export function createMcpServer(tasks: Tasks): McpServer {
       }),
   );
 
+  server.tool(
+    "delete_task",
+    "Delete a task and its notes. Needs the editor role. It cannot be undone.",
+    { taskId: z.string(), principal: actor },
+    async ({ taskId, principal }) =>
+      respond(async () => {
+        await tasks.deleteTask(taskId, ctx(principal));
+        return { deleted: true };
+      }),
+  );
+
+  server.tool(
+    "list_boards",
+    "List the boards the principal holds a role on.",
+    { principal: actor },
+    async ({ principal }) => respond(() => tasks.listBoards(ctx(principal))),
+  );
+
+  server.tool(
+    "export_data",
+    "Export the principal's data as JSON: its boards, the tasks it made, changed, holds, or is assigned to, and its notes.",
+    { principal: actor },
+    async ({ principal }) => respond(() => tasks.exportData(ctx(principal))),
+  );
+
   return server;
 }
 

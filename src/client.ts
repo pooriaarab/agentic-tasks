@@ -3,10 +3,10 @@
 // a retry of a claim, a note, or a create could apply twice.
 import type { Role, Subject } from "agentic-identity";
 import type { Board, ProgressEntry, Task, TaskErrorCode, TaskStatus } from "./model.js";
-import type { ClaimOptions, MoveTarget, NewTask, TaskPatch } from "./tasks.js";
+import type { ClaimOptions, MoveTarget, NewTask, TaskPatch, TasksExport } from "./tasks.js";
 
 export type { Board, ProgressEntry, Task, TaskStatus } from "./model.js";
-export type { ClaimOptions, MoveTarget, NewTask, TaskPatch } from "./tasks.js";
+export type { ClaimOptions, MoveTarget, NewTask, TaskPatch, TasksExport } from "./tasks.js";
 
 export type MemberKind = Subject["kind"];
 export type BoardRole = Role;
@@ -84,6 +84,9 @@ export interface TasksClient {
   shareBoard(boardId: string, subject: { kind: MemberKind; id: string }, role: BoardRole, options?: CallOptions): Promise<void>;
   unshareBoard(boardId: string, subject: { kind: MemberKind; id: string }, options?: CallOptions): Promise<void>;
   eraseBoard(boardId: string, options?: CallOptions): Promise<void>;
+  listBoards(options?: CallOptions): Promise<Board[]>;
+  exportData(options?: CallOptions): Promise<TasksExport>;
+  deleteTask(taskId: string, options?: CallOptions): Promise<void>;
   createTask(input: NewTask, options?: CallOptions): Promise<Task>;
   listTasks(filter: ListTasksFilter, options?: CallOptions): Promise<Task[]>;
   getTask(taskId: string, options?: CallOptions): Promise<Task>;
@@ -98,7 +101,7 @@ export interface TasksClient {
 
 // A success reply must have the expected shape, or the call fails. A proxy or a
 // wrong baseUrl can answer 200 with any body.
-type Shape = "board" | "task" | "tasks" | "note" | "notes" | "shared" | "unshared" | "erased";
+type Shape = "board" | "task" | "tasks" | "note" | "notes" | "shared" | "unshared" | "erased" | "deleted" | "boards" | "export";
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
@@ -124,6 +127,21 @@ const SHAPES: Record<Shape, (v: unknown) => boolean> = {
   shared: (v) => isObject(v) && v.shared === true,
   unshared: (v) => isObject(v) && v.unshared === true,
   erased: (v) => isObject(v) && v.erased === true,
+  deleted: (v) => isObject(v) && v.deleted === true,
+  boards: (v) => Array.isArray(v) && v.every(SHAPES.board),
+  export: (v) =>
+    isObject(v) &&
+    typeof v.exportedAt === "string" &&
+    isPrincipal(v.principal) &&
+    Array.isArray(v.boards) &&
+    v.boards.every(
+      (entry) =>
+        isObject(entry) &&
+        SHAPES.board(entry.board) &&
+        typeof entry.role === "string" &&
+        SHAPES.tasks(entry.tasks) &&
+        SHAPES.notes(entry.notes),
+    ),
 };
 
 export function createClient(options: ClientOptions): TasksClient {
@@ -212,6 +230,11 @@ export function createClient(options: ClientOptions): TasksClient {
     },
     eraseBoard: async (id, o) => {
       await call("DELETE", `/boards/${seg(id)}`, undefined, o, "erased");
+    },
+    listBoards: (o) => call("GET", "/boards", undefined, o, "boards"),
+    exportData: (o) => call("GET", "/export", undefined, o, "export"),
+    deleteTask: async (id, o) => {
+      await call("DELETE", `/tasks/${seg(id)}`, undefined, o, "deleted");
     },
     createTask: (input, o) => call("POST", "/tasks", input, o, "task"),
     listTasks: (filter, o) => {

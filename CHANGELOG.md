@@ -4,6 +4,12 @@ All notable changes to this package are in this file. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the package uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- `deleteTask`, `listBoards`, and `exportData` on the SDK and the client. The CLI has `delete`, `boards`, and `export`. MCP has `delete_task`, `list_boards`, and `export_data`. The HTTP API has `DELETE /tasks/:id`, `GET /boards`, and `GET /export`.
+
 ## [0.6.0] - 2026-10-29
 
 ### Added
