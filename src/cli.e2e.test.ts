@@ -222,8 +222,8 @@ describe("agentic-tasks CLI (built binary)", { timeout: 30_000 }, () => {
       const result = spawnSync(process.execPath, [CLI, flag], { encoding: "utf8" });
       expect([result.status, result.stdout.trim()]).toEqual([0, pkg.version]);
     }
-    for (const flag of ["--version", "-v"]) {
-      const result = spawnSync(process.execPath, [CLI, "mcp", flag], { encoding: "utf8", input: "", timeout: 10_000 });
+    for (const argv of [["mcp", "--version"], ["mcp", "-v"], ["mcp", "version"], ["mcp", "--file", file, "--version"], ["--file", file, "mcp", "-v"]]) {
+      const result = spawnSync(process.execPath, [CLI, ...argv], { encoding: "utf8", input: "", timeout: 10_000 });
       expect([result.status, result.stdout.trim()]).toEqual([0, pkg.version]);
     }
   });

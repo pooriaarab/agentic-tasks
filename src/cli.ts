@@ -362,28 +362,29 @@ async function runCommand(
 // Finds the command and a help request. A value that follows a flag is not read
 // as either, so a flag value of "-h" stays a value. A word of "-h" or "--help" in
 // an argument position is help.
-function scanForHelp(argv: string[]): { help: boolean; words: string[] } {
+function scanForHelp(argv: string[]): { help: boolean; version: boolean; words: string[] } {
   const words: string[] = [];
   let help = false;
+  let version = false;
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index] as string;
     if (token === "--help" || token === "-h") help = true;
+    else if (token === "--version" || token === "-v") version = true;
     else if (token.startsWith("--")) index += 1;
     else words.push(token);
   }
-  return { help, words };
+  return { help, version, words };
 }
 
 async function main(argv: string[]): Promise<number> {
   try {
-    const versionFlags = ["--version", "-v", "version"];
+    // Help and version come before every other check, so they work with no --as and no store.
     // `mcp --version` answers before the server starts.
-    if (versionFlags.includes(argv[0] as string) || (argv[0] === "mcp" && versionFlags.includes(argv[1] as string))) {
+    const { help, version, words } = scanForHelp(argv);
+    if (argv[0] === "version" || (words[0] === "mcp" && words[1] === "version") || (version && !help && (argv[0] === "--version" || argv[0] === "-v" || words[0] === "mcp"))) {
       process.stdout.write(`${VERSION}\n`);
       return 0;
     }
-    // Help comes before every other check, so it works with no --as and no store.
-    const { help, words } = scanForHelp(argv);
     if (help || words[0] === "help") {
       const named = words[0] === "help" ? words[1] : words[0];
       if (named === undefined) {
