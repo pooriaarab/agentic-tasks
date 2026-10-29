@@ -1,6 +1,7 @@
 import type { ChildProcess } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { createServer } from "node:net";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient, TasksApiError, type TasksClient } from "./client.js";
@@ -8,8 +9,15 @@ import { LOCAL_REGION, migrate, seedCredential, startWorker, stopWorker, waitFor
 
 // The client against the real Worker under `wrangler dev`, with stored credentials.
 const PERSIST = mkdtempSync(join(tmpdir(), "agentic-tasks-client-"));
-const PORT = 18791;
-const ORIGIN = `http://127.0.0.1:${PORT}`;
+// A port that is free now, so a stray server on a fixed port cannot answer for the Worker.
+async function freePort(): Promise<number> {
+  const probe = createServer();
+  await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
+  const { port } = probe.address() as { port: number };
+  await new Promise((resolve) => probe.close(resolve));
+  return port;
+}
+let ORIGIN = "";
 
 async function refusal(promise: Promise<unknown>): Promise<TasksApiError> {
   const error = await promise.then(
@@ -29,8 +37,13 @@ describe("createClient against the Worker", () => {
     migrate(PERSIST);
     const aliceToken = await seedCredential(PERSIST, "alice");
     const bobToken = await seedCredential(PERSIST, "bob");
-    server = startWorker(PORT, PERSIST, [...LOCAL_REGION]);
+    const port = await freePort();
+    ORIGIN = `http://127.0.0.1:${port}`;
+    server = startWorker(port, PERSIST, [...LOCAL_REGION]);
     await waitForWorker(`${ORIGIN}/api/v1/tasks`, server);
+    // This Worker answers a request with no credential as 401 UNAUTHENTICATED.
+    const probe = await fetch(`${ORIGIN}/api/v1/tasks/boards/x`);
+    expect(probe.status).toBe(401);
     alice = createClient({ baseUrl: ORIGIN, token: aliceToken });
     bob = createClient({ baseUrl: `${ORIGIN}/`, token: bobToken });
   }, 180_000);
@@ -177,14 +190,31 @@ describe("createClient requests", () => {
     expect(error).toBeInstanceOf(TasksApiError);
   });
 
-  it("does not follow a redirect", async () => {
+  it("never follows a redirect, and fails a 3xx or an opaque redirect as UNKNOWN", async () => {
     let init: RequestInit | undefined;
     const client = fake(async (_input, i) => {
       init = i;
-      return new Response('{"id":"b","columns":[]}');
+      return new Response(null, { status: 307, headers: { location: "https://elsewhere.example.com/" } });
     });
-    await client.getBoard("b");
-    expect(init?.redirect).toBe("error");
+    const error = await client.claim("t1").then(() => undefined, (e: unknown) => e as TasksApiError);
+    expect(init?.redirect).toBe("manual");
+    expect(error?.code).toBe("UNKNOWN");
+    expect(error?.status).toBe(307);
+    const opaque = { ok: false, status: 0, text: async () => "" } as unknown as Response;
+    const blocked = await fake(async () => opaque).claim("t1").then(() => undefined, (e: unknown) => e as TasksApiError);
+    expect(blocked?.code).toBe("UNKNOWN");
+    expect(blocked?.status).toBe(0);
+  });
+
+  it("rejects when the signal aborts while the request is in flight", async () => {
+    const hanging: typeof fetch = (_input, init) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+      });
+    const controller = new AbortController();
+    const pending = fake(hanging).getTask("t1", { signal: controller.signal });
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
   });
 
   // Reads the file that tsup writes. ci:local builds before it tests.

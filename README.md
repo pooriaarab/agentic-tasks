@@ -48,7 +48,7 @@ and an id, so a person and an agent with one id are two subjects. The CLI needs
 ## SDK
 
 `agentic-tasks/client` is a typed client for the Worker HTTP API. It uses only
-`fetch`, so it runs in browsers, Workers, and Node 22.
+`fetch`, so it runs in Workers and Node 22, and in a browser on the same origin as the Worker.
 
 ```js
 import { createClient, TasksApiError } from "agentic-tasks/client";
@@ -64,7 +64,8 @@ try {
 }
 ```
 
-- `baseUrl` is the Worker origin, with no query or hash. The client adds `/api/v1/tasks`.
+- `baseUrl` is the Worker URL, `http` or `https`, with no query, hash, or credentials. The client adds
+  `/api/v1/tasks` after any path prefix.
 - `token` is a bearer credential that the Worker accepts. `fetch` is optional.
 - One method for each route: `createBoard`, `getBoard`, `addColumn`, `shareBoard`,
   `unshareBoard`, `eraseBoard`, `createTask`, `listTasks`, `getTask`, `updateTask`,
@@ -73,7 +74,8 @@ try {
   A reply that is not an API error, or a success reply with the wrong shape, has the code `UNKNOWN`.
 - Each method takes `{ signal }` last. An aborted call rejects with the signal reason: `AbortError`, or `TimeoutError` for `AbortSignal.timeout`.
   A write that was aborted after it was sent may still have applied. Read the task before you try again.
-- The client does not follow redirects.
+- The client does not follow redirects: a 3xx reply fails as `UNKNOWN`.
+- The Worker sends no CORS headers. A browser page can call it only from the same origin.
 - The client never retries. A refused claim stays refused: wait for the holder or the expiry.
 
 ## Planned features

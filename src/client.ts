@@ -1,14 +1,15 @@
 // A typed client for the Worker HTTP API. It uses only fetch, URL, and
 // AbortSignal, so it runs in browsers, Workers, and Node 22. It never retries:
 // a retry of a claim, a note, or a create could apply twice.
+import type { Role, Subject } from "agentic-identity";
 import type { Board, ProgressEntry, Task, TaskErrorCode, TaskStatus } from "./model.js";
 import type { ClaimOptions, MoveTarget, NewTask, TaskPatch } from "./tasks.js";
 
 export type { Board, ProgressEntry, Task, TaskStatus } from "./model.js";
 export type { ClaimOptions, MoveTarget, NewTask, TaskPatch } from "./tasks.js";
 
-export type MemberKind = "human" | "agent";
-export type BoardRole = "viewer" | "commenter" | "editor" | "owner";
+export type MemberKind = Subject["kind"];
+export type BoardRole = Role;
 
 // Codes the task rules return, plus the ones the Worker and its auth return.
 export type ApiErrorCode =
@@ -158,8 +159,9 @@ export function createClient(options: ClientOptions): TasksClient {
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: callOptions?.signal,
-      // A redirect would send a write to another host. Fail instead.
-      redirect: "error",
+      // Never follow a redirect: it would send a write to another host. Workers
+      // reject "error", so a 3xx (or an opaque redirect) fails as UNKNOWN below.
+      redirect: "manual",
     });
     const text = await response.text();
     let parsed: unknown;
