@@ -17,7 +17,7 @@ const PORT_ONE = 18801;
 const PORT_TWO = 18802;
 const PORT_NO_REGION = 18803;
 const base = (port: number) => `http://127.0.0.1:${port}/api/v1/tasks`;
-const TRUST = "TASKS_UNSAFE_TRUST_HEADERS:1";
+const TRUST = "TASKS_UNSAFE_LOCAL_TEST_AUTH:1";
 const ALICE = { "x-principal-id": "alice", "x-principal-kind": "human" };
 const BOT = { "x-principal-id": "bot-1", "x-principal-kind": "agent_of_human" };
 

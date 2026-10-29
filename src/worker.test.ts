@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createMemoryAuth, createMemoryStore, type PrincipalContext } from "agentic-identity";
 import { D1_SCHEMA } from "agentic-identity/cloudflare";
 import { TaskError } from "./model.js";
-import { createApp, tasksOnD1 } from "./worker.js";
+import { createApp, localTestAuth, tasksOnD1 } from "./worker.js";
 import { createTasks, type Tasks } from "./tasks.js";
 
 // Failure list, written before the code. A store error that did not apply a write
@@ -12,15 +12,17 @@ import { createTasks, type Tasks } from "./tasks.js";
 //  2. "Network connection lost" may have applied the write, so it stays 500.
 //  3. A TaskError keeps its own status, and an unknown error stays 500.
 //  4. With an Auth port, a request needs a credential that it resolves. The header
-//     trust flag plays no part, and the headers are ignored.
+//     local test auth flag plays no part, and the headers are ignored.
+//  4b. Local test auth serves a loopback request only. A real host, or a client
+//      address that is missing or not loopback, gets 403 and never reaches the task code.
 //  5. The migration holds the adapter schema, so the two cannot drift apart.
-const ENV = { TASKS_UNSAFE_TRUST_HEADERS: "1", DB: {}, TASKS_REGION: "eu" };
+const ENV = { TASKS_UNSAFE_LOCAL_TEST_AUTH: "1", DB: {}, TASKS_REGION: "eu" };
 
 function failingWith(error: Error) {
   const app = createApp(() => ({ getBoard: async () => Promise.reject(error) }) as unknown as Tasks);
   return app.request(
     "/api/v1/tasks/boards/b",
-    { headers: { "x-principal-id": "alice", "x-principal-kind": "human" } },
+    { headers: { "x-principal-id": "alice", "x-principal-kind": "human", "cf-connecting-ip": "127.0.0.1" } },
     ENV,
   );
 }
@@ -53,6 +55,55 @@ describe("store errors", () => {
   });
 });
 
+describe("local test auth", () => {
+  const WHO = { "x-principal-id": "alice", "x-principal-kind": "human" };
+  const app = createApp(() => ({ getBoard: async () => ({ id: "b" }) }) as unknown as Tasks);
+  const LOCAL = { ...WHO, "cf-connecting-ip": "127.0.0.1" };
+  const get = async (url: string, headers: Record<string, string> = LOCAL) =>
+    (await app.request(url, { headers }, ENV)).status;
+
+  it.each(["http://localhost/", "http://127.0.0.1:8787/", "http://[::1]:8787/"])("serves %s", async (origin) => {
+    expect(await get(`${origin}api/v1/tasks/boards/b`)).toBe(200);
+  });
+
+  it.each(["https://tasks.example.com/", "http://10.0.0.5/", "http://localhost.example.com/"])(
+    "refuses %s with 403",
+    async (origin) => {
+      expect(await get(`${origin}api/v1/tasks/boards/b`)).toBe(403);
+    },
+  );
+
+  it("refuses a request that came through the edge, even on a loopback host", async () => {
+    expect(await get("http://localhost/api/v1/tasks/boards/b", { ...LOCAL, "cf-connecting-ip": "203.0.113.9" })).toBe(403);
+  });
+
+  it("refuses a non-loopback request inside the Auth itself", async () => {
+    const request = new Request("https://tasks.example.com/", { headers: LOCAL });
+    expect(await localTestAuth.authenticate(request)).toBeNull();
+  });
+
+  it("refuses a request with no client address, as from a service binding", async () => {
+    expect(await get("http://localhost/api/v1/tasks/boards/b", WHO)).toBe(403);
+  });
+
+  // A D1 with no stored credential, and a region that the local flag allows.
+  const emptyDb = { prepare: () => ({ bind: () => ({ all: async () => ({ results: [], meta: {} }) }) }) };
+  const STORED = { DB: emptyDb, TASKS_REGION: "unknown", TASKS_UNSAFE_LOCAL_REGION: "1" };
+
+  it.each([undefined, "true", "0", "1 ", ""])(
+    "is off when the flag is %j, so headers alone answer 401",
+    async (flag) => {
+      const env = flag === undefined ? STORED : { ...STORED, TASKS_UNSAFE_LOCAL_TEST_AUTH: flag };
+      const response = await createApp(() => ({}) as unknown as Tasks).request(
+        "/api/v1/tasks/boards/b",
+        { headers: LOCAL },
+        env,
+      );
+      expect(response.status).toBe(401);
+    },
+  );
+});
+
 describe("migration", () => {
   it("holds the schema that the D1 adapter needs", () => {
     const sql = readFileSync(new URL("../migrations/0001_store.sql", import.meta.url), "utf8");
@@ -76,7 +127,7 @@ describe("app on an Auth port", () => {
     return { app: createApp(() => tasks, auth), token: await issue(owner) };
   }
 
-  it("serves a request with a credential, with no trust flag set", async () => {
+  it("serves a request with a credential, with no local test auth flag set", async () => {
     const { app, token } = await setup();
     const created = await app.request(
       "/api/v1/tasks/boards",
@@ -91,7 +142,7 @@ describe("app on an Auth port", () => {
     const { app } = await setup();
     const response = await app.request(
       "/api/v1/tasks/boards/x",
-      { headers: { "x-principal-id": "alice", "x-principal-kind": "human" } },
+      { headers: { "x-principal-id": "alice", "x-principal-kind": "human", "cf-connecting-ip": "127.0.0.1" } },
       NO_FLAG,
     );
     expect(response.status).toBe(401);

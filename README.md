@@ -10,18 +10,18 @@ Task boards where people and agents claim and finish work.
 > Status: early. The library, CLI, and MCP server use the shared `Store` port
 > from `agentic-identity`. The CLI keeps data in a local JSON file.
 > The HTTP API runs as a Worker on a D1 database. Board roles come from
-> `agentic-identity`. Sign-in does not exist yet, so the Worker has a local-dev
-> stopgap (see the caution). The package is not on npm yet.
+> `agentic-identity`. The Worker reads a bearer credential from the same D1
+> store. The package is not on npm yet.
 
 > [!CAUTION]
-> Do not expose the HTTP API to the public internet. The sign-in stopgap trusts
-> the `X-Principal-Id` and `X-Principal-Kind` headers. Any caller can name any
-> person or agent, and the role of that name decides what the call may do. The
-> Worker answers 503 until you set `TASKS_UNSAFE_TRUST_HEADERS=1`. Use it for
-> local dev only. `TASKS_UNSAFE_LOCAL_REGION=1` skips the region check of the
-> database. Use it for local dev only. It goes away when the identity Worker API (`agentic-identity`
-> 0.2.0) can resolve a credential: pass that `Auth` to `createApp`, and the flag
-> and the headers stop mattering.
+> The Worker does not issue credentials. Run the `agentic-identity` Worker on the
+> same D1 database to sign people in and to make keys. `TASKS_UNSAFE_LOCAL_TEST_AUTH=1`
+> swaps the credential for the `X-Principal-Id` and `X-Principal-Kind` headers.
+> Nothing checks them. It serves only a request that names a loopback host and a
+> loopback client address, and answers 403 to any other. Both are headers, not
+> the socket. Keep `wrangler dev` on its default loopback address, or a caller on
+> your network can forge them. Use it for local dev and tests only. `TASKS_UNSAFE_LOCAL_REGION=1` skips the
+> region check of the database. Use it for local dev only.
 
 ## Access
 
@@ -73,7 +73,7 @@ Run the HTTP API on your machine only. Wrangler keeps a local D1 database:
 ```sh
 export WRANGLER_SEND_METRICS=false
 npx wrangler d1 migrations apply DB --local
-npx wrangler dev --var TASKS_UNSAFE_TRUST_HEADERS:1 --var TASKS_REGION:unknown --var TASKS_UNSAFE_LOCAL_REGION:1
+npx wrangler dev --var TASKS_UNSAFE_LOCAL_TEST_AUTH:1 --var TASKS_REGION:unknown --var TASKS_UNSAFE_LOCAL_REGION:1
 ```
 
 Local D1 reports no served region, so the store cannot check a region claim
@@ -97,7 +97,7 @@ is refused in all of them.
 
 ## Limits
 
-- The HTTP API has no sign-in yet. It trusts the principal headers, for local dev.
+- The Worker reads credentials but does not issue them. Use the `agentic-identity` Worker for that.
 - The CLI and the MCP server trust the principal that you name, as `git` trusts
   `user.name`. Anyone who can open the store file can name any principal.
 - A role check and the action that follows are two steps. A role that is taken

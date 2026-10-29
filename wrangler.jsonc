@@ -1,8 +1,7 @@
 {
-  // CAUTION: the Worker trusts the X-Principal-Id and X-Principal-Kind headers.
-  // Any caller can act as any principal. Do not expose this Worker to the public
-  // internet until real auth lands. It answers 503 unless TASKS_UNSAFE_TRUST_HEADERS=1
-  // is set. Set that only behind a gateway that checks identity and sets the headers.
+  // The Worker reads a bearer credential from the D1 store. For local dev only,
+  // TASKS_UNSAFE_LOCAL_TEST_AUTH=1 trusts principal headers on loopback requests.
+  // Never set it in production.
   //
   // Worker for the /api/v1/tasks HTTP API. State lives in the D1 database bound
   // as DB, so every Worker instance sees the same tasks and claims.
