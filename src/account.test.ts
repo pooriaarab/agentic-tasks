@@ -11,7 +11,7 @@
 //  6. A board that was shared to the subject with the owner role, but made by another, stays.
 //  7. A second erase counts zero. Erase leaves a second person's boards alone.
 //  8. A person and an agent with the same id are two subjects.
-//  9. A board with a corrupt creator is left alone. An erase that stops names the board it stopped at.
+//  9. A board with a corrupt creator is left alone. A task row with no id gives an error that names the board, not a raw failure. An erase that stops names the board it stopped at.
 // 10. The collection names stay stable, so a rename fails here before it breaks a host.
 import { describe, expect, it } from "vitest";
 import { createMemoryStore } from "agentic-identity";
@@ -100,6 +100,16 @@ describe("eraseAccount", () => {
     await store.put("boards", bad.b.id, { ...row, createdBy: null });
     expect(await tasksAccount.eraseAccount(ANA, deps(ANA))).toEqual({ boards: 1, tasks: 1, notes: 1 });
     expect((await store.get("boards", bad.b.id))).not.toBeNull();
+    // A task row with no id breaks the board erase itself. The count reads skip it, and the error names the board.
+    const rowless = await board(tasks, ANA, "rowless");
+    await store.put("tasks", "stray", { boardId: rowless.b.id, title: "t", position: 0 });
+    const stuck = await tasksAccount.eraseAccount(ANA, deps(ANA)).catch((e) => e);
+    expect(stuck.message).toContain(rowless.b.id);
+    await store.delete("tasks", "stray");
+    // The board row went first, so a retry cannot find it. The named id finishes it, as the README says.
+    expect(await tasksAccount.eraseAccount(ANA, deps(ANA))).toEqual({ boards: 0, tasks: 0, notes: 0 });
+    await tasks.eraseBoard(rowless.b.id, ctxOf(ANA));
+    expect((await store.query("tasks", { where: { boardId: rowless.b.id } })).items).toEqual([]);
     const failing = { ...tasks, eraseBoard: async () => { throw new Error("db down"); } };
     const second = await board(tasks, ANA, "second");
     const err = await tasksAccount.eraseAccount(ANA, { tasks: failing, ctx: ctxOf(ANA) }).catch((e) => e);

@@ -2,7 +2,7 @@
 // and never reads the storage layout. The shape is provisional: it is the contract that the next
 // `agentic-identity` release adds to `agentic-identity/account` as `AccountPackage`. The released 0.6.x has no such type.
 import type { PrincipalContext } from "agentic-identity";
-import type { Principal } from "./model.js";
+import type { Principal, Task } from "./model.js";
 import { PRINCIPAL_KINDS } from "./model.js";
 import type { Tasks } from "./tasks.js";
 
@@ -17,8 +17,8 @@ type JsonRecord = Record<string, unknown>;
 export interface TasksAccount {
   id: "tasks";
   /** Collections: `boards` (each with the subject's `role`), `tasks` (the ones the subject made, changed, holds, or is assigned to), and `notes` (the subject's own). */
-  exportAccount(subject: Principal, deps: TasksAccountDeps): Promise<Record<string, JsonRecord[]>>;
-  /** Erases the boards the subject created and still owns, with their tasks and notes. Counts by `boards`, `tasks`, and `notes`. The tasks and notes of other people on those boards go too, and are counted. A failure names the board id, so it can be erased by id. */
+  exportAccount(subject: Principal, deps: TasksAccountDeps): Promise<Record<"boards" | "tasks" | "notes", JsonRecord[]>>;
+  /** Erases the boards the subject created and still owns, with their tasks and notes. Counts by `boards`, `tasks`, and `notes`. The tasks and notes of other people on those boards go too, and are counted. A failure names the board id, so it can be erased by id. A subject that is an agent needs a one-step context rooted in itself (as `trustedContext` makes): a delegated chain is refused. */
   eraseAccount(subject: Principal, deps: TasksAccountDeps): Promise<Record<string, number>>;
 }
 
@@ -60,13 +60,15 @@ export const tasksAccount: TasksAccount = {
     for (const { board, role } of (await tasks.exportData(ctx)).boards) {
       const by = board.createdBy as Partial<Principal> | null | undefined;
       if (role !== "owner" || by?.id !== subject.id || by?.kind !== subject.kind) continue;
-      const rows = await tasks.listTasks({ boardId: board.id }, ctx);
+      let rows: Task[] = [];
       let notes = 0;
-      for (const task of rows) notes += (await tasks.listProgress(task.id, ctx)).length;
       try {
+        // A task row with no id cannot own a note query, and `exportData` skips it too: it is erased with the board but not counted.
+        rows = (await tasks.listTasks({ boardId: board.id }, ctx)).filter((t) => typeof t.id === "string" && t.id !== "");
+        for (const task of rows) notes += (await tasks.listProgress(task.id, ctx)).length;
         await tasks.eraseBoard(board.id, ctx);
       } catch (cause) {
-        // The board row goes first, so the next run cannot find a board that failed half way. The id is not personal data.
+        // The board row may already be gone, and then the next run cannot find the board. The id is not personal data.
         throw new Error(`erase stopped at board ${board.id}: ${counts.boards} boards, ${counts.tasks} tasks, and ${counts.notes} notes were erased before it`, { cause });
       }
       counts.boards += 1;
