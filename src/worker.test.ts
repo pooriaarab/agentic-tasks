@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createMemoryAuth, createMemoryStore, type PrincipalContext } from "agentic-identity";
 import { D1_SCHEMA } from "agentic-identity/cloudflare";
 import { TaskError } from "./model.js";
-import { createApp } from "./worker.js";
+import { createApp, tasksOnD1 } from "./worker.js";
 import { createTasks, type Tasks } from "./tasks.js";
 
 // Failure list, written before the code. A store error that did not apply a write
@@ -105,5 +105,62 @@ describe("app on an Auth port", () => {
       NO_FLAG,
     );
     expect(response.status).toBe(401);
+  });
+});
+
+// Failure list for the region claim, written before the code:
+//  6. "eu" and "us" serve with or without the local flag.
+//  7. "unknown" without the local flag answers 503 REGION_NOT_CONFIGURED.
+//  8. "unknown" with the flag set to anything but "1" answers 503.
+//  9. A missing or unknown region answers 503, even with the flag set.
+// 10. "eu" with the flag still runs the store's served-region check.
+describe("region claim", () => {
+  const member: PrincipalContext = {
+    principalId: "alice",
+    kind: "human",
+    chain: [{ id: "alice", kind: "human" }],
+    scopes: ["board:admin"],
+  };
+
+  async function statusWith(vars: Record<string, string>) {
+    const { auth, issue } = createMemoryAuth();
+    const tasks = createTasks({ store: createMemoryStore({ region: "unknown" }) });
+    const app = createApp(() => tasks, auth);
+    const token = await issue(member);
+    const response = await app.request(
+      "/api/v1/tasks/boards/none",
+      { headers: { authorization: `Bearer ${token}` } },
+      { DB: {}, ...vars },
+    );
+    return response.status;
+  }
+
+  it.each([
+    [{ TASKS_REGION: "eu" }, 404],
+    [{ TASKS_REGION: "us" }, 404],
+    [{ TASKS_REGION: "eu", TASKS_UNSAFE_LOCAL_REGION: "1" }, 404],
+    [{ TASKS_REGION: "unknown", TASKS_UNSAFE_LOCAL_REGION: "1" }, 404],
+    [{ TASKS_REGION: "unknown" }, 503],
+    [{ TASKS_REGION: "unknown", TASKS_UNSAFE_LOCAL_REGION: "true" }, 503],
+    [{ TASKS_REGION: "unknown", TASKS_UNSAFE_LOCAL_REGION: "yes" }, 503],
+    [{ TASKS_REGION: "unknown", TASKS_UNSAFE_LOCAL_REGION: "1 " }, 503],
+    [{ TASKS_REGION: "unknown", TASKS_UNSAFE_LOCAL_REGION: "" }, 503],
+    [{ TASKS_UNSAFE_LOCAL_REGION: "1" }, 503],
+    [{ TASKS_REGION: "moon", TASKS_UNSAFE_LOCAL_REGION: "1" }, 503],
+  ])("for %j answers %i", async (vars, status) => {
+    expect(await statusWith(vars)).toBe(status);
+  });
+
+  it("keeps the served-region check for eu, even with the local flag", async () => {
+    // A D1 that reports no served region, as local D1 does.
+    const db = { prepare: () => ({ bind: () => ({ all: async () => ({ results: [], meta: {} }) }) }) };
+    const tasks = tasksOnD1({ DB: db, TASKS_REGION: "eu", TASKS_UNSAFE_LOCAL_REGION: "1" } as never);
+    await expect(tasks.getBoard("b", member)).rejects.toThrow("did not report where it served");
+  });
+
+  it("skips the served-region check for unknown with the local flag", async () => {
+    const db = { prepare: () => ({ bind: () => ({ all: async () => ({ results: [], meta: {} }) }) }) };
+    const tasks = tasksOnD1({ DB: db, TASKS_REGION: "unknown", TASKS_UNSAFE_LOCAL_REGION: "1" } as never);
+    await expect(tasks.getBoard("b", member)).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 });

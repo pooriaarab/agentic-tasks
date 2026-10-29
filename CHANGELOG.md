@@ -4,7 +4,7 @@ All notable changes to this package are in this file. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the package uses
 [Semantic Versioning](https://semver.org/).
 
-## 0.1.0
+## [0.1.0] - 2026-10-29
 
 First release.
 
@@ -20,4 +20,6 @@ First release.
 - HTTP API as a Cloudflare Worker on D1, with a required region claim
   (`TASKS_REGION`). The sign-in stopgap is for local dev only and needs
   `TASKS_UNSAFE_TRUST_HEADERS=1`.
+- Local dev can run with `TASKS_REGION=unknown` and `TASKS_UNSAFE_LOCAL_REGION=1`.
+  The region check does not run then. Never set it in production.
 - Depends on `agentic-identity` ^0.3.0. Requires Node.js 22 or later.

@@ -18,7 +18,8 @@ Task boards where people and agents claim and finish work.
 > the `X-Principal-Id` and `X-Principal-Kind` headers. Any caller can name any
 > person or agent, and the role of that name decides what the call may do. The
 > Worker answers 503 until you set `TASKS_UNSAFE_TRUST_HEADERS=1`. Use it for
-> local dev only. It goes away when the identity Worker API (`agentic-identity`
+> local dev only. `TASKS_UNSAFE_LOCAL_REGION=1` skips the region check of the
+> database. Use it for local dev only. It goes away when the identity Worker API (`agentic-identity`
 > 0.2.0) can resolve a credential: pass that `Auth` to `createApp`, and the flag
 > and the headers stop mattering.
 
