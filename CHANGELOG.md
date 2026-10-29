@@ -10,7 +10,7 @@ All notable changes to this package are in this file. The format follows
 
 ### Added
 
-- A `<board id>`, `<task id>`, `<title>`, or `<name>` argument of the CLI also takes a flag: `--board`, `--task`, `--title`, or `--name`. For example, `list --board <board id>` is the same as `list <board id>`. Give each value once, as the argument or as the flag. `tasks <command> --help` lists the flag forms of that command.
+- A `<board id>`, `<task id>`, `<title>`, or `<name>` argument of the CLI also takes a flag: `--board`, `--task`, `--title`, or `--name`. For example, `list --board <board id>` is the same as `list <board id>`. Give each value once, as the argument or as the flag. `agentic-tasks <command> --help` lists the flag forms of that command.
 
 ### Security
 
