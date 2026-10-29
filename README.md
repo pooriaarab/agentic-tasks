@@ -241,7 +241,7 @@ Export the app from your Worker's entry file:
 export { default } from "agentic-tasks/worker";
 ```
 
-Add this to your Wrangler config. Set the `nodejs_compat` flag, as this repo's `wrangler.jsonc` does:
+Add this to your Wrangler config. Set the `nodejs_compat` flag. The store adapters use Node built-ins such as `Buffer`:
 
 ```jsonc
 {
@@ -266,8 +266,8 @@ Create the database in the EU with `npx wrangler d1 create agentic-tasks --locat
 | Binding or variable | Needed | What it does |
 |---|---|---|
 | `DB` | Yes | The D1 database. Without it every route except `/health` answers 503 `STORE_NOT_CONFIGURED`. |
-| `TASKS_REGION` | Yes | `eu` or `us`, where the database lives. You state it; the Worker does not detect it. Without a valid value every route except `/health` answers 503 `REGION_NOT_CONFIGURED`. The store refuses a query that D1 serves outside this region. |
-| `TASKS_UNSAFE_LOCAL_TEST_AUTH` | No | `1` trusts the `X-Principal-Id` and `X-Principal-Kind` headers, on loopback requests only. Local dev and tests only. |
+| `TASKS_REGION` | Yes | `eu` or `us`, where the database lives. You set it. The Worker does not detect it. Without a valid value every route except `/health` answers 503 `REGION_NOT_CONFIGURED`. The store refuses a query that D1 serves outside this region. |
+| `TASKS_UNSAFE_LOCAL_TEST_AUTH` | No | `1` trusts the `X-Principal-Id` and `X-Principal-Kind` headers, on loopback requests only. Use it only for local dev and tests. A request that is not on loopback gets 403 `LOCAL_TEST_AUTH_NOT_LOOPBACK`. |
 | `TASKS_UNSAFE_LOCAL_REGION` | No | `1` lets `TASKS_REGION` be `unknown`, because local D1 reports no region. Local dev only. |
 
 Without test auth, the Worker reads a bearer credential from the same D1 database.
