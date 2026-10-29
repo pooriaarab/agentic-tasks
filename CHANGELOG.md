@@ -4,11 +4,15 @@ All notable changes to this package are in this file. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the package uses
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.6.0] - 2026-10-29
 
 ### Added
 
 - `agentic-tasks/ui` exports `mount`, which renders the task UI into an element from a base URL and a token callback. `agentic-tasks/ui.css` holds its styles. React is an optional peer dependency.
+
+### Changed
+
+- The README matches the published package.
 
 ## [0.5.0] - 2026-10-29
 
