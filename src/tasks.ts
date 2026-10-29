@@ -823,7 +823,7 @@ export function createTasks(options: TasksOptions): Tasks {
       const role = requireShareRole(input?.role);
       const expiresInMs = requireLifetime(input.expiresInMs);
       if ((input.email === undefined) === (input.handle === undefined)) {
-        throw invalid("give an email or a handle, not both");
+        throw invalid(input.email === undefined ? "give an email or a handle" : "give an email or a handle, not both");
       }
       if (typeof (input.email ?? input.handle) !== "string") {
         throw invalid("email and handle must be strings");
@@ -858,7 +858,8 @@ export function createTasks(options: TasksOptions): Tasks {
       await authorize(ctx, "admin", boardId);
       const link = await getRow<{ resourceId?: string }>(store, "links", linkId);
       if (link?.resourceId !== boardId) throw new TaskError("NOT_FOUND", `board ${boardId} has no link ${linkId}`);
-      // A revoked link stays revoked at its first time, and writes no second audit entry.
+      // A revoked link keeps its first revoke time, and writes no second audit entry, when calls come one after another.
+      // Two calls at the same moment can both write: the link stays revoked, but its time moves.
       if ((link as { revokedAt?: unknown }).revokedAt != null) return;
       await shared(() => sharing.revokeLink(ctx, linkId));
     },

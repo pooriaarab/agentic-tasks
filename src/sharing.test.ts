@@ -82,6 +82,14 @@ describe("board sharing: access, invites, links", () => {
     expect((await tasks.listAccess(other.id, ALICE)).links[0]?.revokedAt).toBe(NOW);
   });
 
+  it("names the missing field when an invite gives neither email nor handle", async () => {
+    const { tasks, board } = await setup();
+    const error = await tasks.inviteToBoard(board.id, { role: "viewer" }, ALICE).catch((e: unknown) => e);
+    expect((error as TaskError).message).toBe("give an email or a handle");
+    const both = await tasks.inviteToBoard(board.id, { role: "viewer", email: "a@b.co", handle: "x" }, ALICE).catch((e: unknown) => e);
+    expect((both as TaskError).message).toBe("give an email or a handle, not both");
+  });
+
   it("keeps the first revoke time when a link is revoked twice", async () => {
     let now = NOW;
     const tasks = createTasks({ store: createMemoryStore(), now: () => new Date(now) });
