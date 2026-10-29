@@ -3,7 +3,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createMemoryStore, type Store } from "agentic-identity";
-import { createFileStore } from "./file-store.js";
 import { openLocalD1 } from "./worker-harness.js";
 import { trustedContext } from "./principal.js";
 import { createTasks, type Tasks } from "./tasks.js";
@@ -17,10 +16,12 @@ import { createTasks, type Tasks } from "./tasks.js";
 //  2. Each unshares the other: the same.
 //  3. One demotes and the other unshares: the same.
 // One lucky round is not proof, so each case runs many rounds.
+// The file store has no case here. It runs the calls on one path one at a time,
+// so a test that holds one transaction open for another cannot finish on it.
 const ALICE = trustedContext("alice", "human");
 const BOB = trustedContext("bob", "human");
 // A D1 round is slow, so it runs fewer rounds. Without the guard, every D1 round fails.
-const ROUNDS: Record<string, number> = { memory: 25, file: 25, D1: 5 };
+const ROUNDS: Record<string, number> = { memory: 25, D1: 5 };
 
 type Open = () => Promise<{ one: Store; two: Store; cleanup: () => Promise<void> }>;
 
@@ -33,18 +34,6 @@ const backends: [string, Open][] = [
         one: createMemoryStore({ region: "eu", shared }),
         two: createMemoryStore({ region: "eu", shared }),
         cleanup: async () => {},
-      };
-    },
-  ],
-  [
-    "file",
-    async () => {
-      const dir = await mkdtemp(join(tmpdir(), "agentic-tasks-owners-"));
-      const file = join(dir, "tasks.json");
-      return {
-        one: createFileStore(file),
-        two: createFileStore(file),
-        cleanup: () => rm(dir, { recursive: true, force: true }),
       };
     },
   ],

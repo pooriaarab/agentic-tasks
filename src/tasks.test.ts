@@ -503,16 +503,17 @@ describe("a claim that loses a race", () => {
   // Fires a competing claim after the first read, before the commit. No timing
   // involved, so a missing version check fails this test every time.
   it("is refused when another store claimed between its read and its commit", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "agentic-tasks-race-"));
-    try {
-      const file = join(dir, "tasks.json");
-      const winner = createTasks({ store: createFileStore(file) });
+    {
+      // Two stores on one name share data, and each commits on its own. The file
+      // store runs calls on one path one at a time, so it cannot show this race.
+      const shared = `race-${crypto.randomUUID()}`;
+      const winner = createTasks({ store: createMemoryStore({ region: "eu", shared }) });
       const board = await winner.createBoard({ title: "Sprint" }, ALICE);
       await winner.addColumn(board.id, "Todo", ALICE);
       const task = await winner.createTask({ boardId: board.id, title: "Write spec" }, ALICE);
       await winner.shareBoard(board.id, { kind: "agent", id: "bot-1" }, "editor", ALICE);
 
-      const inner = createFileStore(file);
+      const inner = createMemoryStore({ region: "eu", shared });
       let fired = false;
       const loser = createTasks({
         store: {
@@ -535,8 +536,6 @@ describe("a claim that loses a race", () => {
       });
       await expect(errorCode(loser.claim(task.id, BOT))).resolves.toBe("CLAIM_HELD");
       expect((await winner.getTask(task.id, ALICE)).claim?.holder).toEqual(ALICE_P);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
     }
   });
 });
