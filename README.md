@@ -52,8 +52,10 @@ and an id, so a person and an agent with one id are two subjects. The CLI needs
   claim, only the holder or a board owner can delete.
 - List the boards you hold a role on with `listBoards`, `boards`, `list_boards`, or `GET /boards`.
 - Export your own data with `exportData`, `export`, `export_data`, or `GET /export`. The
-  JSON has each board you hold a role on, your role, the tasks you made, changed, hold, or
-  are assigned to, and the notes you wrote. It holds no one else's notes.
+  JSON has each board you hold a role on, your role, the tasks you made, last changed, hold, or
+  are assigned to, and the notes you wrote. A task is the whole task: it names the other
+  people and agents on it and holds text that they wrote. The notes are only yours. Share
+  the file with care. An agent exports its own tasks and notes, from the boards it can reach.
 
 ## SDK
 

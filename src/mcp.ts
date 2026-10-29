@@ -229,7 +229,7 @@ export function createMcpServer(tasks: Tasks): McpServer {
 
   server.tool(
     "export_data",
-    "Export the principal's data as JSON: its boards, the tasks it made, changed, holds, or is assigned to, and its notes.",
+    "Export the principal's data as JSON: its boards, the tasks it made, last changed, holds, or is assigned to, and its own notes.",
     { principal: actor },
     async ({ principal }) => respond(() => tasks.exportData(ctx(principal))),
   );

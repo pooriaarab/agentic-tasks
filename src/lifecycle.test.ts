@@ -97,6 +97,17 @@ describe.each(backends)("task lifecycle on the %s store", (_name, open) => {
     expect(await tasks.listBoards(ALICE)).toEqual([]);
   });
 
+  it("exports from a board that holds corrupt rows", async () => {
+    await tasks.progress(taskId, "alice note", ALICE);
+    await store.transaction(async (tx) => {
+      const row = (await tx.get("tasks", taskId)) as Record<string, unknown>;
+      await tx.put("tasks", taskId, { ...row, claim: { holder: null }, assignees: "nope", createdBy: null } as never);
+    });
+    const data = await tasks.exportData(BOB);
+    expect(data.boards).toHaveLength(1);
+    expect(data.boards[0]?.tasks.map((t) => t.id)).toEqual([]);
+  });
+
   it("exports the caller's own data and nobody else's", async () => {
     await tasks.progress(taskId, "alice note", ALICE);
     await tasks.progress(taskId, "bob note", BOB);

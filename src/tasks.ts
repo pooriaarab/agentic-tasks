@@ -107,7 +107,9 @@ export interface TasksExport {
   exportedAt: string;
   principal: Principal;
   // One entry for each board the caller holds a role on. `tasks` are the tasks the
-  // caller made, changed, holds, or is assigned to. `notes` are the caller's notes.
+  // caller made, last changed, holds, or is assigned to. Each is the whole task, so it
+  // names the other principals on it and holds text that others wrote. `notes` are only
+  // the caller's own notes.
   boards: { board: Board; role: Role; tasks: Task[]; notes: ProgressEntry[] }[];
 }
 
@@ -404,10 +406,16 @@ export function createTasks(options: TasksOptions): Tasks {
 
     async exportData(ctx) {
       const me = actorOf(ctx);
+      // A stored row may hold any value. A field that is not a principal is not the caller.
+      const isMe = (p: unknown) => {
+        const candidate = p as Partial<Principal> | null | undefined;
+        return candidate?.id === me.id && candidate?.kind === me.kind;
+      };
       const involved = (task: Task) =>
-        [task.createdBy, task.updatedBy, ...(task.assignees ?? []), task.claim?.holder].some(
-          (p) => p !== undefined && samePrincipal(p, me),
-        );
+        isMe(task.createdBy) ||
+        isMe(task.updatedBy) ||
+        isMe(task.claim?.holder) ||
+        (Array.isArray(task.assignees) && task.assignees.some(isMe));
       const boards = [];
       for (const { board, role } of await accessibleBoards(ctx)) {
         const all = await listRows<Task>(store, "tasks", { boardId: board.id });
@@ -415,7 +423,7 @@ export function createTasks(options: TasksOptions): Tasks {
         const notes: ProgressEntry[] = [];
         for (const task of all.sort(byPosition)) {
           const mine = (await listRows<ProgressEntry>(store, "progress", { taskId: task.id })).filter(
-            (note) => samePrincipal(note.by, me),
+            (note) => isMe(note.by),
           );
           notes.push(...mine);
           if (involved(task)) tasks.push(task);
