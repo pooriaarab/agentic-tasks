@@ -3,7 +3,7 @@
 // React and react-dom are peer dependencies.
 import { StrictMode, useCallback, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { ThemeProvider, TooltipProvider } from "agentic-design/react";
+import { TooltipProvider } from "agentic-design/react";
 import "agentic-design/styles.css";
 import "./ui.css";
 import { createClient, type TasksClient } from "../src/client.js";
@@ -39,11 +39,14 @@ function checkOptions(options: TasksUiOptions): void {
     throw new TypeError(`the task UI needs a principal with a kind (${PRINCIPAL_KINDS.join(", ")}) and an id`);
   }
   if (typeof options.getToken !== "function") throw new TypeError("the task UI needs a getToken function");
+  if (options.boardId !== undefined && (typeof options.boardId !== "string" || options.boardId === "")) {
+    throw new TypeError("boardId must be a non-empty string");
+  }
   // createClient checks the base URL. Do it here, so a bad value throws from mount or update.
   createClient({ baseUrl: options.baseUrl, token: "check" });
 }
 
-/** The task UI. `mount` adds the theme and tooltip providers above it. */
+/** The task UI. `mount` adds the tooltip provider above it. The host page owns the theme. */
 function TasksUi(options: TasksUiOptions) {
   checkOptions(options);
   const { baseUrl, getToken, principal, fetch: fetchImpl } = options;
@@ -95,11 +98,9 @@ export function mount(element: HTMLElement, options: TasksUiOptions): MountedTas
   const render = (next: TasksUiOptions) =>
     root.render(
       <StrictMode>
-        <ThemeProvider>
-          <TooltipProvider>
+        <TooltipProvider>
             <TasksUi key={`${next.principal.kind}:${next.principal.id}:${next.boardId ?? ""}`} {...next} />
-          </TooltipProvider>
-        </ThemeProvider>
+        </TooltipProvider>
       </StrictMode>,
     );
   render(options);

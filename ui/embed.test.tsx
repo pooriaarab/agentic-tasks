@@ -69,6 +69,20 @@ describe("mount", () => {
     expect(host.innerHTML).toBe("");
   });
 
+  it.each(["", 5])("throws for the board id %j", (boardId) => {
+    expect(() => mount(host, options({ boardId: boardId as never }))).toThrow(TypeError);
+    expect(host.innerHTML).toBe("");
+  });
+
+  it("leaves the theme attribute of the host page alone", async () => {
+    document.documentElement.setAttribute("data-theme", "dark");
+    await act(async () => void (mounted = mount(host, options())));
+    await act(async () => mounted!.unmount());
+    mounted = undefined;
+    expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+    document.documentElement.removeAttribute("data-theme");
+  });
+
   it("throws when getToken is missing", () => {
     expect(() => mount(host, options({ getToken: undefined as never }))).toThrow(TypeError);
   });

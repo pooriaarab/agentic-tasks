@@ -174,7 +174,7 @@ an element, the Worker origin, a function that returns the bearer token, and the
 
 ```ts
 import { mount } from "agentic-tasks/ui";
-import "agentic-tasks/ui.css";   // holds the design styles too
+import "agentic-tasks/ui.css";   // the design styles and the task styles
 
 const ui = mount(document.getElementById("tasks")!, {
   baseUrl: "https://tasks.example.com",
@@ -186,6 +186,10 @@ const ui = mount(document.getElementById("tasks")!, {
 ui.update({ baseUrl, getToken, principal, boardId: "other" });  // show another list
 ui.unmount();                                                   // remove the UI
 ```
+
+`ui.css` is global. It holds the design tokens and base rules for `html`, `body`, headings, and links, and it
+uses plain class names such as `.card` and `.row`. Load it on a page that can take those styles. The UI does not
+change the theme of the page: set `data-theme` on `<html>` yourself. The UI shows one `h1`, the list or board name.
 
 The principal needs an `id` and a `kind`. A missing or unknown `kind` throws a `TypeError`. An empty token
 fails the call, and the UI shows the error. The server still checks every write against the token. The UI
