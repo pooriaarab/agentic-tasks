@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { TaskError, type Claim, type Principal, type Task } from "./model.js";
-import { createMemoryStore, type Store } from "agentic-identity";
+import { createMemoryStore, type Doc, type Store } from "agentic-identity";
 import { createFileStore } from "./file-store.js";
 import { createTasks, type Tasks } from "./tasks.js";
 
@@ -476,6 +476,47 @@ describe("claims across two stores on one file", () => {
       );
       expect(codes.filter((code) => code === "NO_ERROR")).toHaveLength(1);
       expect(codes.filter((code) => code === "CLAIM_HELD")).toHaveLength(7);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("a claim that loses a race", () => {
+  // Fires a competing claim after the first read, before the commit. No timing
+  // involved, so a missing version check fails this test every time.
+  it("is refused when another store claimed between its read and its commit", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "agentic-tasks-race-"));
+    try {
+      const file = join(dir, "tasks.json");
+      const winner = createTasks({ store: createFileStore(file) });
+      const board = await winner.createBoard({ title: "Sprint" }, ALICE);
+      await winner.addColumn(board.id, "Todo", ALICE);
+      const task = await winner.createTask({ boardId: board.id, title: "Write spec" }, ALICE);
+
+      const inner = createFileStore(file);
+      let fired = false;
+      const loser = createTasks({
+        store: {
+          ...inner,
+          transaction: (fn) =>
+            inner.transaction((tx) =>
+              fn({
+                ...tx,
+                get: async <T extends Doc>(collection: string, id: string) => {
+                  const row = await tx.get<T>(collection, id);
+                  if (!fired) {
+                    fired = true;
+                    await winner.claim(task.id, ALICE);
+                  }
+                  return row;
+                },
+              }),
+            ),
+        },
+      });
+      await expect(errorCode(loser.claim(task.id, BOT))).resolves.toBe("CLAIM_HELD");
+      expect((await winner.getTask(task.id)).claim?.holder).toEqual(ALICE);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

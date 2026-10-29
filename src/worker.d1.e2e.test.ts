@@ -42,12 +42,12 @@ describe("two Worker instances on one D1 database", () => {
   let two: ChildProcess;
 
   async function startBoth() {
-    // Started one after the other: two wrangler processes that boot together on
-    // one persist directory race, and one never comes up.
+    // Started one after the other: two wrangler processes that boot together
+    // collide, and one dies. This holds even on different ports and directories.
     one = startWorker(PORT_ONE, persist, [TRUST]);
-    await waitForWorker(base(PORT_ONE));
+    await waitForWorker(base(PORT_ONE), one);
     two = startWorker(PORT_TWO, persist, [TRUST]);
-    await waitForWorker(base(PORT_TWO));
+    await waitForWorker(base(PORT_TWO), two);
   }
 
   beforeAll(async () => {
@@ -116,7 +116,7 @@ describe("a Worker with no valid region", () => {
   beforeAll(async () => {
     migrate(persist);
     server = startWorker(PORT_NO_REGION, persist, [TRUST, "TASKS_REGION:unknown"]);
-    await waitForWorker(base(PORT_NO_REGION));
+    await waitForWorker(base(PORT_NO_REGION), server);
   }, 180_000);
 
   afterAll(async () => {

@@ -55,16 +55,29 @@ function notConfigured(code: string, message: string) {
   return { error: { code, message } };
 }
 
+// Errors from a write that did not apply: local sqlite, the adapter, and the
+// overload text of production D1, which rejects a query before it runs.
+// "Network connection lost" is left out. The write may have applied.
 const TRANSIENT_STORE_ERROR =
-  /SQLITE_BUSY|database is locked|session commit token|transaction kept conflicting/;
+  /SQLITE_BUSY|database is locked|session commit token|transaction kept conflicting|D1 DB is overloaded/;
 
 type Resolve = (env: Bindings) => Tasks;
 
-// Each request builds its Tasks on the D1 binding, so every Worker instance
-// reads and writes the one database. A claim is a Store transaction, so two
+// Tasks run on the D1 binding, so every Worker instance reads and writes the one database. A claim is a Store transaction, so two
 // instances cannot both take it.
-export const tasksOnD1: Resolve = (env) =>
-  createTasks({ store: createD1Store(env.DB as D1Like, { region: regionOf(env) as Region }) });
+// The store keeps a queue that runs one transaction at a time in this isolate, so
+// one store serves every request on a binding.
+const cache = new WeakMap<D1Like, { region: Region; tasks: Tasks }>();
+
+export const tasksOnD1: Resolve = (env) => {
+  const db = env.DB as D1Like;
+  const region = regionOf(env) as Region;
+  const cached = cache.get(db);
+  if (cached?.region === region) return cached.tasks;
+  const tasks = createTasks({ store: createD1Store(db, { region }) });
+  cache.set(db, { region, tasks });
+  return tasks;
+};
 
 export function createApp(resolve: Resolve) {
   const api = new Hono<{ Bindings: Bindings }>().basePath("/api/v1/tasks");

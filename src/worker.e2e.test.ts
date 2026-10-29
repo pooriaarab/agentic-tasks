@@ -69,7 +69,7 @@ describe("agentic-tasks Worker without the trust flag", () => {
 
   beforeAll(async () => {
     server = startWorker(PORT_WITHOUT_FLAG, PERSIST, []);
-    await waitForWorker(BASE_WITHOUT_FLAG);
+    await waitForWorker(BASE_WITHOUT_FLAG, server);
   }, 120_000);
 
   afterAll(() => stopWorker(server));
@@ -97,7 +97,7 @@ describe("agentic-tasks Worker over wrangler dev", () => {
 
   beforeAll(async () => {
     server = startWorker(PORT, PERSIST, TRUST_FLAG);
-    await waitForWorker(BASE);
+    await waitForWorker(BASE, server);
   }, 120_000);
 
   afterAll(() => stopWorker(server));

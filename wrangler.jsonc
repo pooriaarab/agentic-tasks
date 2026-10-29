@@ -19,6 +19,8 @@
   "compatibility_date": "2026-01-01",
   // The shared adapters use Node built-ins such as Buffer.
   "compatibility_flags": ["nodejs_compat"],
+  // No telemetry from any wrangler command in this project.
+  "send_metrics": false,
   "vars": { "TASKS_REGION": "eu" },
   "d1_databases": [
     {
