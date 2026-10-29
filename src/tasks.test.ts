@@ -651,6 +651,11 @@ describe("board roles", () => {
       expect(await adminEntries()).toEqual([]);
     });
 
+    it("writes none when a non-owner releases a task that has no claim", async () => {
+      await expect(code(tasks.release(taskId, CAROL))).resolves.toBe("NOT_HOLDER");
+      expect(await adminEntries()).toEqual([]);
+    });
+
     it("writes none when a non-owner holder releases or closes its own claim", async () => {
       await tasks.claim(taskId, CAROL);
       await tasks.release(taskId, CAROL);
@@ -664,7 +669,7 @@ describe("board roles", () => {
       await expect(code(tasks.release(taskId, CAROL))).resolves.toBe("NOT_HOLDER");
       expect(await adminEntries()).toMatchObject([{ outcome: "denied" }]);
       await expect(code(tasks.closeTask(taskId, CAROL))).resolves.toBe("CLAIM_HELD");
-      expect(await adminEntries()).toHaveLength(2);
+      expect(await adminEntries()).toMatchObject([{ outcome: "denied" }, { outcome: "denied" }]);
     });
 
     it("writes one allowed entry when an owner breaks another's claim", async () => {
@@ -677,7 +682,7 @@ describe("board roles", () => {
       await tasks.release(taskId, ALICE);
       const after = await mine();
       expect(after).toHaveLength(before + 1);
-      expect(after[0]).toMatchObject({ outcome: "allowed" });
+      expect(after.every((e) => e.outcome === "allowed")).toBe(true);
     });
   });
 
