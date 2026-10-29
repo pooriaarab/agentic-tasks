@@ -192,6 +192,10 @@ async function runCommand(
 
 async function main(argv: string[]): Promise<number> {
   try {
+    if (argv[0] === "--help" || argv[0] === "-h" || argv[0] === "help") {
+      process.stdout.write(`${USAGE}\n`);
+      return 0;
+    }
     const args = parseArgs(argv);
     if (args.command === undefined) throw new UsageError("no command given");
     const path =

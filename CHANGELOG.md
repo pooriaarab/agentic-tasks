@@ -6,14 +6,22 @@ All notable changes to this package are in this file. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-29
+
 ### Added
 
+- `agentic-tasks/worker`: the Cloudflare Worker (`createApp`, and the default app on D1)
+  is now a public subpath export, with a test that imports it from a packed tarball.
 - A web UI that the Worker serves on `/`, built on `agentic-design` and the typed client.
   It has lists, a board view and a list view, task create, edit, assign, claim, release,
   and close, filters, empty, loading, and error states, and a mark on tasks that an
   agent created or last changed.
 - Playwright tests against `wrangler dev`, an axe WCAG 2.2 AA check on each view in
   light and dark, and a screenshot set in `docs/screenshots`.
+
+### Fixed
+
+- `agentic-tasks --help` (also `-h` and `help`) prints the usage and exits 0. It exited 2.
 
 ## [0.3.0] - 2026-10-29
 
