@@ -198,7 +198,7 @@ The package has these entries. The build writes each one to `dist/`.
 | `agentic-tasks` | The library: `createTasks`, `createFileStore`, `tasksAccount`, `trustedContext`, types, `TaskError`, `PRINCIPAL_KINDS`, and `VERSION`. | [Library](#library) |
 | `agentic-tasks/client` | A typed client for the Worker HTTP API. | [SDK](#sdk) |
 | `agentic-tasks/worker` | The HTTP API as a Hono app for a Cloudflare Worker. | [Worker](#worker) |
-| `agentic-tasks/ui` | `mount`, which renders the task UI in your page. | [Mount the UI](#mount-the-ui-in-your-app) |
+| `agentic-tasks/ui` | `mount`, which renders the task UI in your page, and its option types. | [Mount the UI](#mount-the-ui-in-your-app) |
 | `agentic-tasks/ui.css` | The styles for `agentic-tasks/ui`. | [Mount the UI](#mount-the-ui-in-your-app) |
 | `npx agentic-tasks` (bin) | The CLI. `agentic-tasks mcp` serves the MCP tools. | [CLI and MCP](#cli-and-mcp) |
 
@@ -207,8 +207,8 @@ There is no `agentic-tasks/mcp` entry. Start the MCP server with `npx agentic-ta
 ### Library
 
 The library reads no environment variables. Give it a store. Every call takes a
-principal context from `agentic-identity`. `trustedContext` makes one from a name.
-It does not check the name. Use it only in local code that you control.
+principal context from `agentic-identity`. `trustedContext(id, kind)` makes one from a name and a kind.
+It does not check them. Use it only in local code that you control.
 
 ```ts
 import { createFileStore, createTasks, trustedContext } from "agentic-tasks";
@@ -218,7 +218,7 @@ const ana = trustedContext("ana", "human"); // no check: local code only
 
 const board = await tasks.createBoard({ title: "Sprint" }, ana);
 await tasks.addColumn(board.id, "Todo", ana);
-const task = await tasks.createTask({ boardId: board.id, title: "Write the spec" }, ana); // first column
+const task = await tasks.createTask({ boardId: board.id, title: "Write the spec" }, ana); // no columnId: the first column
 await tasks.getTask(task.id, ana); // read a task before you claim it
 await tasks.claim(task.id, ana, { ttlMs: 600_000 });
 ```
@@ -285,10 +285,14 @@ To use another store or credential check, call `createApp` yourself. It still ne
 ```ts
 import { createApp } from "agentic-tasks/worker";
 import { createTasks } from "agentic-tasks";
+import type { Auth, Store } from "agentic-identity";
+
+declare const myStore: (env: unknown) => Store;  // your Store
+declare const myAuth: Auth;                      // your Auth
 
 export default createApp(
-  (env) => createTasks({ store: myStore(env) }), // your Store from agentic-identity
-  myAuth,                                        // your Auth from agentic-identity
+  (env) => createTasks({ store: myStore(env) }),
+  myAuth,
 );
 ```
 
