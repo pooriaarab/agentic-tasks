@@ -6,11 +6,20 @@ All notable changes to this package are in this file. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-29
+
+This release adds one public subpath. Nothing else changed since 0.2.0.
+
 ### Added
 
 - `agentic-tasks/client`: `createClient({ baseUrl, token, fetch? })`, a typed client for
   the Worker HTTP API. It has one method for each route, throws `TasksApiError` with the
-  API error `code` and HTTP `status`, takes an `AbortSignal`, and never retries.
+  API error `code` and HTTP `status`, takes an `AbortSignal`, and never retries. It uses
+  only `fetch`, so it runs in Workers and Node 22, and in a browser on the same origin as
+  the Worker.
+- The client checks every success reply for its shape, and fails a wrong one as `UNKNOWN`.
+  It refuses an id of `.` or `..`, a `baseUrl` that is not `http` or `https`, and a
+  redirect.
 
 ## [0.2.0] - 2026-10-29
 
