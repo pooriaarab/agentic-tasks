@@ -165,7 +165,7 @@ async function requireTask(ops: StoreOps, id: string): Promise<Task> {
 }
 
 function requireOpen(task: Task): void {
-  if (task.status === "closed") {
+  if (task.status !== "open") {
     throw new TaskError("TASK_CLOSED", `task ${task.id} is closed`);
   }
 }
@@ -178,6 +178,16 @@ function requireColumn(board: Board, columnId: string): void {
 
 function samePrincipal(a: Principal, b: Principal): boolean {
   return a.id === b.id && a.kind === b.kind;
+}
+
+// Only the exact form that toISOString writes is a time. Date.parse also reads
+// text such as "1" as a past date, which would free a claim that is corrupt.
+const STORED_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
+function parseStoredTime(text: string): number {
+  if (!STORED_TIME.test(text)) return Number.NaN;
+  const ms = Date.parse(text);
+  return Number.isFinite(ms) && new Date(ms).toISOString() === text ? ms : Number.NaN;
 }
 
 // A claim read from storage may hold any value. Anything but a holder with
@@ -196,7 +206,7 @@ function isWellFormed(claim: unknown): claim is Claim {
 // A claim is live until its expiry instant. At the instant itself it has expired.
 // An expiry that does not parse counts as live, so a corrupt claim blocks others.
 function isLive(claim: Claim, nowMs: number): boolean {
-  const expiresMs = Date.parse(claim.expiresAt);
+  const expiresMs = parseStoredTime(claim.expiresAt);
   return !Number.isFinite(expiresMs) || expiresMs > nowMs;
 }
 
@@ -392,7 +402,7 @@ export function createTasks(options: TasksOptions): Tasks {
         const live = current !== undefined && isLive(current, now.getTime());
         task.claim = {
           holder: { id: principal.id, kind: principal.kind },
-          claimedAt: live ? current.claimedAt : nowIso,
+          claimedAt: live && typeof current.claimedAt === "string" ? current.claimedAt : nowIso,
           expiresAt: new Date(now.getTime() + ttlMs).toISOString(),
         };
         touch(task, principal, nowIso);

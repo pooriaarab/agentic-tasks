@@ -262,6 +262,41 @@ describe.each(backends)("claim rules on the %s store", (_name, open) => {
     await expect(errorCode(h.tasks.closeTask(id, BOT))).resolves.toBe("CLAIM_HELD");
   });
 
+  it.each(["1", "0", "foo 1", "2026-10-28"])(
+    "counts a claim whose expiry %j is not the stored time format as live",
+    async (expiresAt) => {
+      const id = await openTask();
+      await writeRawClaim(id, { holder: ALICE, claimedAt: "2026-10-28T10:00:00.000Z", expiresAt });
+      await expect(
+        errorCode(h.tasks.claim(id, BOT, { ttlMs: TEN_MINUTES })),
+      ).resolves.toBe("CLAIM_HELD");
+      await expect(errorCode(h.tasks.closeTask(id, BOT))).resolves.toBe("CLAIM_HELD");
+    },
+  );
+
+  it("refuses a task whose stored status is not open", async () => {
+    const id = await openTask();
+    await h.store.transaction(async (tx) => {
+      const task = (await tx.get("tasks", id))!;
+      await tx.put("tasks", id, { ...task, status: "Closed" });
+    });
+    await expect(errorCode(h.tasks.claim(id, BOT))).resolves.toBe("TASK_CLOSED");
+    await expect(
+      errorCode(h.tasks.updateTask(id, { title: "x" }, BOT)),
+    ).resolves.toBe("TASK_CLOSED");
+  });
+
+  it("writes a new claimedAt when a renewed claim has a bad one", async () => {
+    const id = await openTask();
+    await writeRawClaim(id, {
+      holder: ALICE,
+      claimedAt: 42 as unknown as string,
+      expiresAt: "2026-10-28T10:05:00.000Z",
+    });
+    const renewed = await h.tasks.claim(id, ALICE, { ttlMs: TEN_MINUTES });
+    expect(renewed.claim?.claimedAt).toBe("2026-10-28T10:00:00.000Z");
+  });
+
   it("reports a claim that is not an object as held, with an error code", async () => {
     const id = await openTask();
     await writeRawClaim(id, null as unknown as Claim);

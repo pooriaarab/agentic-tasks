@@ -54,8 +54,18 @@ describe("file store", () => {
     ["a row version of 0", { clock: 1, tables: { t: { x: { doc: {}, version: 0 } } } }],
     ["a fractional clock", { clock: 1.5, tables: {} }],
     ["a row whose doc is not an object", { clock: 1, tables: { t: { x: { doc: 5, version: 1 } } } }],
+    ["a row whose doc is a list", { clock: 1, tables: { t: { x: { doc: [], version: 1 } } } }],
+    ["a table that is a number", { clock: 1, tables: { t: 5 } }],
+    ["a table that is null", { clock: 1, tables: { t: null } }],
+    ["a table that is a list", { clock: 1, tables: { t: [] } }],
+    ["null as the whole file", null],
   ])("refuses a file with %s", async (_name, content) => {
     await writeFile(file, JSON.stringify(content));
+    await expect(createFileStore(file).get("t", "x")).rejects.toThrow(/not an agentic-tasks store file/);
+  });
+
+  it("refuses a file that is not JSON", async () => {
+    await writeFile(file, "{ not json");
     await expect(createFileStore(file).get("t", "x")).rejects.toThrow(/not an agentic-tasks store file/);
   });
 });
