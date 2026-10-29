@@ -12,6 +12,7 @@
 //  7. A second erase counts zero. Erase leaves a second person's boards alone.
 //  8. A person and an agent with the same id are two subjects.
 //  9. A board with a corrupt creator is left alone. A task row with no id stops that board the same way on every run, before anything goes.
+//     A refused last step (too many owners) keeps the board findable: a repeat fails the same way, not zero.
 //     An erase that stops in the middle names the board, leaves the board row, and a repeat finishes it and never reads as done while data remains.
 // 10. The collection names stay stable, so a rename fails here before it breaks a host.
 import { describe, expect, it } from "vitest";
@@ -133,6 +134,19 @@ describe("eraseAccount", () => {
     expect(await tasksAccount.exportAccount(ANA, deps(ANA))).toEqual({ boards: [], tasks: [], notes: [] });
     expect(await tasksAccount.eraseAccount(ANA, deps(ANA))).toEqual({ boards: 0, tasks: 0, notes: 0 });
     expect((await tasksAccount.exportAccount(BOB, deps(BOB))).boards).toHaveLength(1);
+  });
+
+  it("a refused last step keeps the board findable and never reads as done", async () => {
+    const { tasks, deps } = setup();
+    const { b } = await board(tasks, ANA, "ana");
+    // More owners than the sharing core can erase in one transaction: deleteResource refuses.
+    for (let i = 0; i < 101; i++) await tasks.shareBoard(b.id, { kind: "human", id: `owner-${i}` }, "owner", ctxOf(ANA));
+    for (let run = 0; run < 2; run++) {
+      const err = await tasksAccount.eraseAccount(ANA, deps(ANA)).catch((e) => e);
+      expect(err).toMatchObject({ code: "INVALID_INPUT" });
+      expect(err.message).toContain(b.id);
+    }
+    expect((await tasksAccount.exportAccount(ANA, deps(ANA))).boards).toMatchObject([{ id: b.id }]);
   });
 
   it("erases a board the subject made even when a co-owner now works in it", async () => {

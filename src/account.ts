@@ -1,9 +1,9 @@
 // The package's side of the account contract: a host calls `exportAccount` and `eraseAccount`
-// and never reads the storage layout. The shape is provisional: it is the contract that the next
-// `agentic-identity` release adds to `agentic-identity/account` as `AccountPackage`. The released 0.6.x has no such type.
+// and never reads the storage layout. The shape is provisional: it is the contract that a later
+// `agentic-identity` release adds to `agentic-identity/account` as `AccountPackage`. The `AccountApp` of earlier releases is a different contract, and this does not fit it.
 import type { PrincipalContext } from "agentic-identity";
 import type { Principal, Task } from "./model.js";
-import { PRINCIPAL_KINDS } from "./model.js";
+import { PRINCIPAL_KINDS, TaskError } from "./model.js";
 import type { Tasks } from "./tasks.js";
 
 export interface TasksAccountDeps {
@@ -27,15 +27,15 @@ const plain = (value: unknown): JsonRecord[] => JSON.parse(JSON.stringify(value)
 
 function check(subject: Principal, deps: TasksAccountDeps): void {
   const { tasks, ctx } = deps ?? ({} as Partial<TasksAccountDeps>);
-  if (typeof tasks?.exportData !== "function" || typeof tasks.eraseBoard !== "function") throw new Error("tasksAccount needs deps.tasks and deps.ctx");
+  if (typeof tasks?.exportData !== "function" || typeof tasks.eraseBoard !== "function") throw new TaskError("INVALID_INPUT", "tasksAccount needs deps.tasks and deps.ctx");
   const known = (PRINCIPAL_KINDS as readonly unknown[]).includes(subject?.kind);
-  if (typeof subject?.id !== "string" || subject.id.trim() === "" || !known) throw new Error("subject needs an id and a known kind");
+  if (typeof subject?.id !== "string" || subject.id.trim() === "" || !known) throw new TaskError("INVALID_INPUT", "subject needs an id and a known kind");
   // One step in the chain, and it is the subject: a role belongs to the root of the chain, so a context with
   // another root would export or erase that person's boards. The root kind is the role kind of the subject
   // (a person or a user token is `human`, every agent kind is `agent`), as in `trustedContext`.
   const root = ctx?.chain?.length === 1 ? ctx.chain[0] : undefined;
   const rootKind = subject.kind === "human" || subject.kind === "user_token" ? "human" : subject.kind.startsWith("agent") ? "agent" : subject.kind;
-  if (ctx?.principalId !== subject.id || ctx.kind !== subject.kind || root?.id !== subject.id || root.kind !== rootKind) throw new Error("context does not match the subject");
+  if (ctx?.principalId !== subject.id || ctx.kind !== subject.kind || root?.id !== subject.id || root.kind !== rootKind) throw new TaskError("FORBIDDEN", "context does not match the subject");
 }
 
 export const tasksAccount: TasksAccount = {
@@ -75,7 +75,8 @@ export const tasksAccount: TasksAccount = {
         counts.boards += 1;
       } catch (cause) {
         // The board id is not personal data. A run that is repeated finds the board again and counts only what is left.
-        throw new Error(`erase stopped at board ${board.id}: ${counts.boards} boards, ${counts.tasks} tasks, and ${counts.notes} notes were erased before it`, { cause });
+        const code = cause instanceof TaskError ? cause.code : "INVALID_INPUT";
+        throw new TaskError(code, `erase stopped at board ${board.id}: ${counts.boards} boards, ${counts.tasks} tasks, and ${counts.notes} notes were erased before it`);
       }
     }
     return counts;

@@ -8,7 +8,11 @@ All notable changes to this package are in this file. The format follows
 
 ### Added
 
-- `tasksAccount`: `exportAccount` and `eraseAccount` for a host that runs account export and erase across packages. They return plain JSON by collection and counts by collection, so the host does not read the board layout.
+- `tasksAccount`: `exportAccount` and `eraseAccount` for a host that runs account export and erase across packages. They return plain JSON by collection and counts by collection, so the host does not read the board layout. The erase deletes each task before its board.
+
+### Fixed
+
+- `eraseBoard` puts the board row back when the last step (`deleteResource`) is refused, for example for more than 100 owners. Before, the row stayed deleted and the board could not be found again.
 
 ## [0.9.0] - 2026-10-29
 

@@ -735,6 +735,7 @@ export function createTasks(options: TasksOptions): Tasks {
         }
         throw new TaskError("NOT_FOUND", `board ${boardId} does not exist`);
       }
+      const boardRow = await getRow<Board>(store, "boards", boardId);
       await store.delete("boards", boardId);
       const tasksOfBoard = await listRows<Task>(store, "tasks", { boardId });
       for (const task of tasksOfBoard) {
@@ -743,7 +744,13 @@ export function createTasks(options: TasksOptions): Tasks {
         }
         await store.delete("tasks", task.id);
       }
-      await shared(() => sharing.deleteResource(ctx, boardId));
+      try {
+        await shared(() => sharing.deleteResource(ctx, boardId));
+      } catch (error) {
+        // The board has no tasks now. Put the row back so the owner's grant still leads to it, and a repeat can finish.
+        if (boardRow) await putRow(store, "boards", boardRow).catch(() => undefined);
+        throw error;
+      }
     },
   };
 }
