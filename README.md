@@ -189,7 +189,7 @@ One package gives you each way in:
 - **HTTP API**: a Cloudflare Worker at `/api/v1/tasks`. Read the caution above first.
 - **Worker export**: `import { createApp } from "agentic-tasks/worker"`. A host Worker
   calls `createApp(resolve, auth?)` to serve the HTTP API. `resolve(env)` returns the
-  `Tasks` object from `createTasks`. `auth` is an `Auth` from `agentic-identity` 0.9,
+  `Tasks` object from `createTasks`. `auth` is an `Auth` from the same `agentic-identity` version this package depends on,
   or a function of the Worker `env` (the `DB` and `TASKS_REGION` bindings). It
   replaces the default credential check on D1, and passing it turns off
   `TASKS_UNSAFE_LOCAL_TEST_AUTH`. The Worker still binds a D1 database as `DB` and

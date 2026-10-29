@@ -8,9 +8,9 @@ All notable changes to this package are in this file. The format follows
 
 ## [0.11.1] - 2026-10-29
 
-Patch. The package's own functions do not change. A host that also uses
-`agentic-identity` must move its pin to `^0.9.0` before it takes this release. See
-the note under Changed.
+A host that also uses `agentic-identity` must move its pin to `^0.9.0` before it
+takes this release, or it gets two copies of `agentic-identity`. Patch for the
+package. Its own functions do not change. See the note under Changed.
 
 ### Changed
 
