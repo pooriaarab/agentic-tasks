@@ -47,12 +47,13 @@
     "agentic-tasks": "./dist/cli.js"
   },
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && node scripts/build-ui.mjs",
     "prepack": "npm run clean && npm run build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "clean": "rm -rf dist",
-    "ci:local": "npm run build && npm run typecheck && npm test"
+    "ci:local": "npm run build && npm run typecheck && npm test && npm run test:e2e",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",
@@ -61,7 +62,15 @@
     "zod": "^3.25.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
+    "@playwright/test": "^1.64.1",
     "@types/node": "^22.0.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "agentic-design": "^0.1.0",
+    "esbuild": "^0.28.2",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "tsup": "^8.0.0",
     "typescript": "^5.6.0",
     "vitest": "^3.0.0",

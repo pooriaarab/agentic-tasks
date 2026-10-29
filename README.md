@@ -97,6 +97,56 @@ One package gives you each way in:
 - **HTTP API**: a Cloudflare Worker at `/api/v1/tasks`. Read the caution above first.
 - **Web UI**: a small app served by the same Worker.
 
+## UI
+
+The Worker serves a small web app on `/`. It uses the `agentic-design` package
+from npm for tokens, controls, and overlays, and the typed client from
+`agentic-tasks/client` to call the API.
+
+Run it on your machine:
+
+```sh
+npm ci
+export WRANGLER_SEND_METRICS=false
+npm run build
+npx wrangler d1 migrations apply DB --local
+npx wrangler dev --var TASKS_UNSAFE_LOCAL_TEST_AUTH:1 --var TASKS_REGION:unknown --var TASKS_UNSAFE_LOCAL_REGION:1
+```
+
+Open `http://127.0.0.1:8787`. Give a principal id and a kind. The UI never
+defaults the kind. Leave the token empty: the local Worker trusts that name
+on loopback requests only. A deployed Worker needs a bearer token in the
+token field.
+
+What it does:
+
+- Create a list. The UI adds the columns To do, Doing, and Done.
+- Create, edit, assign, claim, release, and close a task.
+- Show tasks as a board or a list. Filter by text, status, and column, or show
+  only tasks that an agent created or last changed.
+- Mark each task that an agent created, or that an agent changed last. The mark is words and an icon.
+- Show loading, empty, and error states. A refused call shows its error code.
+
+It works with a keyboard, shows a focus ring, and follows the system light or
+dark theme or your pick. An axe check for WCAG 2.2 AA runs on each view in both
+themes. Screenshots are in `docs/screenshots`.
+
+Run the browser tests. They start `wrangler dev` on port 18743:
+
+```sh
+npx playwright install chromium
+npm run test:e2e
+SCREENSHOTS=1 npm run test:e2e   # writes docs/screenshots
+```
+
+The UI limits:
+
+- The API has no call that lists lists. The UI remembers the lists that this
+  browser opened. Open another list by its id.
+- The session (id, kind, token) stays in `sessionStorage` until the tab closes.
+- The API keeps only the last writer of a task. If a person changes a task after an agent did, the mark for the agent change goes away. An agent that created a task stays marked.
+- The UI does not show progress notes or manage sharing.
+
 ## Develop
 
 ```sh
