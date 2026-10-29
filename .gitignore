@@ -10,3 +10,5 @@ dist-ui/
 test-results/
 playwright-report/
 .wrangler/
+.dev.vars
+.dev.vars.*
