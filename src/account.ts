@@ -52,7 +52,11 @@ async function plan(subject: AccountSubject, deps: TasksAccountDeps) {
   const tasks = new Map(all.tasks.map(r => [r.id, r.data]));
   const resource = new Map(all.resources.map(r => [r.id, r.data]));
   const mine = (d: Doc) => d.subjectId === subject.id && d.subjectKind === rootKind(subject);
-  for (const r of all.grants) if (r.data.subjectId === subject.id && (!text(r.data.resourceId) || !(SUBJECT_KINDS as readonly unknown[]).includes(r.data.subjectKind))) fail();
+  // Access uses the row key. Validate every grant before field-based owner discovery.
+  for (const r of all.grants) {
+    const d = r.data;
+    if (!text(d.resourceId) || !text(d.subjectId) || !(SUBJECT_KINDS as readonly unknown[]).includes(d.subjectKind) || !(ROLES as readonly unknown[]).includes(d.role) || r.id !== `${d.resourceId}:${String(d.subjectKind)}:${d.subjectId}`) fail();
+  }
   const owned = new Set<string>();
   const sole = new Set<string>();
   for (const id of boards) {
@@ -66,7 +70,6 @@ async function plan(subject: AccountSubject, deps: TasksAccountDeps) {
       if (!res || (next === id ? res.type !== "board" : res.type !== "folder")) fail();
       for (const r of all.grants.filter(r => r.data.resourceId === next)) {
         const d = r.data;
-        if (!text(d.subjectId) || !(SUBJECT_KINDS as readonly unknown[]).includes(d.subjectKind) || !(ROLES as readonly unknown[]).includes(d.role) || r.id !== `${next}:${String(d.subjectKind)}:${d.subjectId}`) fail();
         if (d.role === "owner") owners.push(d);
       }
       if (res.parentId != null && !text(res.parentId)) fail();

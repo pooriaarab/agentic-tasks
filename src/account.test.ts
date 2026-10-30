@@ -89,6 +89,33 @@ describe("account contributor", () => {
     }
   });
 
+  it.each(["board", "folder"])("refuses damaged co-owner grants on a %s before any write", async location => {
+    const { store, tasks, board } = await setup();
+    const { b, t } = await board("ana");
+    const resourceId = location === "board" ? b.id : "team";
+    if (location === "folder") {
+      await store.put("resources", resourceId, { id: resourceId, type: "folder" });
+      const resource = (await store.get("resources", b.id))!;
+      await store.put("resources", b.id, { ...resource, parentId: resourceId });
+    }
+    const id = `${resourceId}:human:bob`;
+    const grant = { resourceId, subjectId: "bob", subjectKind: "human", role: "owner" };
+    for (const damaged of [undefined, null, "elsewhere"]) {
+      const data = { ...grant, resourceId: damaged };
+      if (damaged === undefined) delete data.resourceId;
+      await store.put("grants", id, data as never);
+      // Identity still honors the row key, even when the resourceId field is damaged.
+      expect((await tasks.getTask(t.id, ctx("bob", "human"))).id).toBe(t.id);
+      const before = await Promise.all(["boards", "tasks", "progress", "grants", "resources", "audit"].map(c => store.query(c)));
+      for (const run of [tasksAccount.exportAccount, tasksAccount.eraseAccount]) {
+        await expect(run(ana, { store })).rejects.toMatchObject({ code: "INVALID_INPUT" });
+      }
+      expect(await Promise.all(["boards", "tasks", "progress", "grants", "resources", "audit"].map(c => store.query(c)))).toEqual(before);
+      expect(await store.get("boards", b.id)).not.toBeNull();
+      expect(await store.get("tasks", t.id)).not.toBeNull();
+    }
+  });
+
   it("keeps a board whose parent folder has another owner", async () => {
     const { store, board } = await setup();
     const { b } = await board("ana");

@@ -19,6 +19,7 @@ All notable changes to this package are in this file. The format follows
   authored data, sharing records, and history. Erase sole-owned boards, preserve
   shared boards, remove subject grants, and scrub author ids while keeping kinds.
   Validate stored records before mutation and use transactions for safe retries.
+  Reject damaged grant keys and fields, including co-owner grants on parent folders.
 
 ## [0.11.1] - 2026-10-29
 
