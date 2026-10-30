@@ -10,7 +10,9 @@ All notable changes to this package are in this file. The format follows
 
 ### Changed
 
-- Accept identity 0.10 through 0.x as a peer and bundle the UI with design 0.10.
+- `agentic-identity` is now a required peer instead of a dependency. Install a
+  version in `>=0.10.0 <1.0.0`; hosts pinned below 0.10 must upgrade first.
+- Bundle the UI with `agentic-design` 0.10.
 
 ## [0.13.0] - 2026-10-30
 

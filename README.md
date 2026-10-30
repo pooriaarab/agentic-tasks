@@ -376,7 +376,7 @@ Your `auth` decides what a region mismatch looks like:
 - If your `auth` reads the database and throws, the response is 503 `STORE_BUSY`, as above.
 - If your `auth` passes the request and the task store then hits a region mismatch, the response is 500 `INTERNAL`.
 
-Install `agentic-identity` `^0.10.0` in your app. This package uses that version. The example imports its types:
+Install the required peer `agentic-identity` at `>=0.10.0 <1.0.0` in your app. The example imports its types:
 
 ```ts
 import { createApp } from "agentic-tasks/worker";
@@ -501,6 +501,8 @@ The principal needs an `id` and a `kind`. A missing or unknown `kind` throws a `
 fails the call, and the UI shows the error. The server still checks every write against the token. The UI
 remembers the lists it opened in `localStorage`, under one key for the page origin. It does not separate
 Workers or principals.
+
+`agentic-identity` is a required peer dependency. Install a version in `>=0.10.0 <1.0.0`.
 
 `react` and `react-dom` (version 19) are optional peer dependencies. Install them to use `agentic-tasks/ui`.
 The CLI, the MCP server, and `agentic-tasks/client` do not need them. The web UI that the Worker serves
