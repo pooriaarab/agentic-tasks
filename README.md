@@ -7,7 +7,7 @@
 
 Task boards where people and agents claim and finish work.
 
-> Status: early (0.13.0). The library, CLI, and MCP server use the shared `Store` port
+> Status: early (0.13.1). The library, CLI, and MCP server use the shared `Store` port
 > from `agentic-identity`. The CLI keeps data in a local JSON file.
 > The HTTP API runs as a Worker on a D1 database. Board roles come from
 > `agentic-identity`. The Worker reads a bearer credential from the same D1
