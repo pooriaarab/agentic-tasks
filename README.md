@@ -7,7 +7,7 @@
 
 Task boards where people and agents claim and finish work.
 
-> Status: early (0.13.0). The library, CLI, and MCP server use the shared `Store` port
+> Status: early (0.13.1). The library, CLI, and MCP server use the shared `Store` port
 > from `agentic-identity`. The CLI keeps data in a local JSON file.
 > The HTTP API runs as a Worker on a D1 database. Board roles come from
 > `agentic-identity`. The Worker reads a bearer credential from the same D1
@@ -376,7 +376,7 @@ Your `auth` decides what a region mismatch looks like:
 - If your `auth` reads the database and throws, the response is 503 `STORE_BUSY`, as above.
 - If your `auth` passes the request and the task store then hits a region mismatch, the response is 500 `INTERNAL`.
 
-Install `agentic-identity` `^0.10.0` in your app. This package uses that version. The example imports its types:
+Install the required peer `agentic-identity` at `>=0.10.0 <1.0.0` in your app. The example imports its types:
 
 ```ts
 import { createApp } from "agentic-tasks/worker";
@@ -446,7 +446,7 @@ What it does:
 It works with a keyboard, shows a focus ring, and follows the system light or
 dark theme or your pick. An axe check for WCAG 2.2 AA runs on each view in both
 themes. Screenshots are in `docs/screenshots`. The screenshots from before the 0.11.0 redesign are in
-`docs/screenshots/before`. The calm look follows the `agentic-design` 0.5 tokens, which take their style from
+`docs/screenshots/before`. The calm look follows the `agentic-design` 0.10 tokens, which take their style from
 [Tiny Little Office](https://tinylittleoffice.com) (MIT). No code is copied.
 
 Run the browser tests. They start `wrangler dev` on port 18743:
@@ -501,6 +501,8 @@ The principal needs an `id` and a `kind`. A missing or unknown `kind` throws a `
 fails the call, and the UI shows the error. The server still checks every write against the token. The UI
 remembers the lists it opened in `localStorage`, under one key for the page origin. It does not separate
 Workers or principals.
+
+`agentic-identity` is a required peer dependency. Install a version in `>=0.10.0 <1.0.0`.
 
 `react` and `react-dom` (version 19) are optional peer dependencies. Install them to use `agentic-tasks/ui`.
 The CLI, the MCP server, and `agentic-tasks/client` do not need them. The web UI that the Worker serves

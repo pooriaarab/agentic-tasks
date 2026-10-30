@@ -96,7 +96,7 @@ describe("agentic-tasks Worker with stored credentials", () => {
   it("serves a stored credential, and takes the principal from the store, not the headers", async () => {
     const response = await fetch(`${BASE_WITHOUT_FLAG}/boards`, {
       method: "POST",
-      headers: { authorization: `Bearer ${token}`, "x-principal-id": "mallory", "x-principal-kind": "human" },
+      headers: { authorization: `Bearer ${token}`, "x-principal-id": "mallory", "x-principal-kind": "human", "content-type": "application/json" },
       body: JSON.stringify({ title: "Sprint" }),
     });
     expect(response.status).toBe(201);
