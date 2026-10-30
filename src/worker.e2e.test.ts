@@ -2,17 +2,36 @@ import type { ChildProcess } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createServer } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { LOCAL_REGION, migrate, seedCredential, startWorker, stopWorker, waitForWorker } from "./worker-harness.js";
 
 // The real Worker under `wrangler dev`, on a local D1 database.
 const PERSIST = mkdtempSync(join(tmpdir(), "agentic-tasks-e2e-"));
-beforeAll(() => migrate(PERSIST), 120_000);
+beforeAll(async () => {
+  migrate(PERSIST);
+  PORT = await freePort();
+  PORT_WITHOUT_FLAG = await freePort();
+  BASE = `http://127.0.0.1:${PORT}/api/v1/tasks`;
+  BASE_WITHOUT_FLAG = `http://127.0.0.1:${PORT_WITHOUT_FLAG}/api/v1/tasks`;
+}, 120_000);
 afterAll(() => rmSync(PERSIST, { recursive: true, force: true }));
-const PORT = 18787;
-const PORT_WITHOUT_FLAG = 18788;
-const BASE = `http://127.0.0.1:${PORT}/api/v1/tasks`;
-const BASE_WITHOUT_FLAG = `http://127.0.0.1:${PORT_WITHOUT_FLAG}/api/v1/tasks`;
+let PORT: number;
+let PORT_WITHOUT_FLAG: number;
+let BASE: string;
+let BASE_WITHOUT_FLAG: string;
+
+async function freePort(): Promise<number> {
+  const server = createServer();
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("No local port");
+  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  return address.port;
+}
 const TRUST_FLAG = ["TASKS_UNSAFE_LOCAL_TEST_AUTH:1"];
 const ALICE = { "x-principal-id": "alice", "x-principal-kind": "human" };
 const BOT = { "x-principal-id": "bot-1", "x-principal-kind": "agent_of_human" };
@@ -96,7 +115,7 @@ describe("agentic-tasks Worker with stored credentials", () => {
   it("serves a stored credential, and takes the principal from the store, not the headers", async () => {
     const response = await fetch(`${BASE_WITHOUT_FLAG}/boards`, {
       method: "POST",
-      headers: { authorization: `Bearer ${token}`, "x-principal-id": "mallory", "x-principal-kind": "human" },
+      headers: { authorization: `Bearer ${token}`, "x-principal-id": "mallory", "x-principal-kind": "human", "content-type": "application/json" },
       body: JSON.stringify({ title: "Sprint" }),
     });
     expect(response.status).toBe(201);

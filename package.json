@@ -84,7 +84,7 @@
     "@types/node": "^22.0.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "agentic-design": "^0.5.0 || ^0.10.0",
+    "agentic-design": "^0.10.0",
     "esbuild": "^0.28.2",
     "jsdom": "^26.1.0",
     "react": "^19.3.1",

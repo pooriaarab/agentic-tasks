@@ -446,7 +446,7 @@ What it does:
 It works with a keyboard, shows a focus ring, and follows the system light or
 dark theme or your pick. An axe check for WCAG 2.2 AA runs on each view in both
 themes. Screenshots are in `docs/screenshots`. The screenshots from before the 0.11.0 redesign are in
-`docs/screenshots/before`. The calm look follows the `agentic-design` 0.5 tokens, which take their style from
+`docs/screenshots/before`. The calm look follows the `agentic-design` 0.10 tokens, which take their style from
 [Tiny Little Office](https://tinylittleoffice.com) (MIT). No code is copied.
 
 Run the browser tests. They start `wrangler dev` on port 18743:
