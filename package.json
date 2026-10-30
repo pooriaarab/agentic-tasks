@@ -1,6 +1,6 @@
 {
   "name": "agentic-tasks",
-  "version": "0.11.2",
+  "version": "0.12.0",
   "description": "Task boards where people and agents claim and finish work.",
   "keywords": [
     "tasks",
@@ -50,7 +50,11 @@
       "types": "./dist/embed.d.ts",
       "import": "./dist/embed.js"
     },
-    "./ui.css": "./dist/embed.css"
+    "./ui.css": "./dist/embed.css",
+    "./account": {
+      "types": "./dist/account.d.ts",
+      "import": "./dist/account.js"
+    }
   },
   "bin": {
     "agentic-tasks": "./dist/cli.js"
@@ -69,7 +73,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",
-    "agentic-identity": "^0.9.0",
+    "agentic-identity": "^0.10.0",
     "hono": "^4.13.14",
     "zod": "^4.6.6"
   },

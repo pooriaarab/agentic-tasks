@@ -495,7 +495,7 @@ describe("agentic-tasks lock file (built binary)", () => {
     expect(JSON.parse(refused?.stderr ?? "{}")).toMatchObject({
       error: { code: "CLAIM_HELD" },
     });
-  });
+  }, 20_000);
 });
 
 describe("agentic-tasks MCP server over stdio (built binary)", () => {

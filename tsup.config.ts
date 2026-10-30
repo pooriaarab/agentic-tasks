@@ -9,6 +9,7 @@ export default defineConfig({
   // Named entries, so `ui/embed.tsx` lands next to the others as `dist/embed.js`.
   entry: {
     index: "src/index.ts",
+    account: "src/account.ts",
     cli: "src/cli.ts",
     client: "src/client.ts",
     worker: "src/worker.ts",
