@@ -363,7 +363,7 @@ Your `auth` decides what a region mismatch looks like:
 - If your `auth` reads the database and throws, the response is 503 `STORE_BUSY`, as above.
 - If your `auth` passes the request and the task store then hits a region mismatch, the response is 500 `INTERNAL`.
 
-Install `agentic-identity` `^0.9.0` in your app. This package uses that version. The example imports its types:
+Install `agentic-identity` `^0.10.0` in your app. This package uses that version. The example imports its types:
 
 ```ts
 import { createApp } from "agentic-tasks/worker";
