@@ -38,6 +38,8 @@ describe("packed tarball", () => {
       [
         'import worker, { createApp } from "agentic-tasks/worker";',
         'import { createClient } from "agentic-tasks/client";',
+        'import { tasksAccount } from "agentic-tasks/account";',
+        'if (tasksAccount.id !== "tasks") throw new Error("account");',
         'import { createTasks } from "agentic-tasks";',
         'if (typeof createApp !== "function") throw new Error("createApp");',
         'if (typeof worker.fetch !== "function") throw new Error("default.fetch");',

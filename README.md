@@ -111,7 +111,43 @@ part of `agentic-identity`.
   people and agents on it and holds text that they wrote. The notes are only yours. Share
   the file with care. An agent exports its own tasks and notes, from the boards it can reach. The role is the grant of the person or agent at the root of its chain.
 
-- A host that runs account export and erase across many packages calls `tasksAccount` (from `agentic-tasks`). It has `exportAccount(subject, { tasks, ctx })` and `eraseAccount(subject, { tasks, ctx })`, so the host does not read the board layout. `ctx` must be the context of the subject, with one step in its chain that is the subject (as `trustedContext` makes): a context for someone else, or a delegated chain, throws, even for an agent subject. The export has plain JSON in `boards` (each with your `role`), `tasks`, and `notes`. The erase removes each board that the subject made and still owns, with its tasks and notes, and returns counts of `boards`, `tasks`, and `notes`. The tasks and notes that other people wrote on that board go too, and the counts include them. A task added while the erase runs may be erased and not counted. A board that was shared to the subject stays, and so do the tasks and notes the subject wrote on another person's board. If an erase stops half way, the error names the board id. Each task goes before its board, so the board stays in place and a repeat of the erase finds it and counts only what is left: the counts of the runs add up. A board that the subject owns but whose stored creator is not a valid principal, and a stored task row with no id, stop the erase and name the board; for the task row, before anything goes on that board, and it stops the same way each time until the row is removed. A board the subject made goes even when others now work in it. The shape is provisional: it is the `AccountPackage` contract that a later `agentic-identity` release adds to `agentic-identity/account`. The `agentic-identity/account` of a release before it has a different contract (`AccountApp`), and `tasksAccount` does not fit that one. The subject is an id and a kind: the host takes the kind from the signed-in principal and does not guess it. Export and erase are two calls, so a task written between them is erased and not exported: stop writes first.
+## Account export and erase
+
+Import `tasksAccount` from `agentic-tasks/account`. It implements the
+`AccountPackage<TasksAccountDeps>` registry contract of `agentic-identity/account`.
+
+```ts
+import { tasksAccount } from "agentic-tasks/account";
+import { createAccountRegistry } from "agentic-identity/account";
+
+const registry = createAccountRegistry().register(tasksAccount, { store });
+const data = await tasksAccount.exportAccount({ id: "ana", kind: "human" }, { store });
+const counts = await tasksAccount.eraseAccount({ id: "ana", kind: "human" }, { store });
+```
+
+The host authenticates the subject and gives the contributor a trusted Store.
+Stop writes before export and keep them stopped through erase. The contributor
+reads all stored boards to find authorship after access is revoked. The export
+has plain JSON in `boards`, `tasks`, `notes`, `grants`, `invites`, `links`, and
+`audit`. Owned boards include all their tasks, notes, and sharing data. Other
+boards include the subject's authored data and grants. Link token hashes stay
+private. This package stores no versions, attachments, or blob bytes. Progress
+notes and identity audit entries are its stored history.
+
+Erase deletes sole-owned boards and their data. Shared boards keep other owners.
+The subject's grants and invites go. Its notes go, its assignments and claims go,
+and its author stamps become `(erased)`. Author kinds and audit machine labels
+stay. Counts include deleted and scrubbed records. Each board changes in one transaction. A failed commit leaves that board
+available for retry. A completed erase counts zero on retry. Damaged records,
+grants, and parent paths stop both calls before data changes.
+
+This replaces the provisional `{ tasks, ctx }` dependency with `{ store }`.
+Call once for each principal kind that wrote data. Delegated agent kinds and
+user tokens hold roles as `agent` and `human`, as the task API does. Invites have
+no creator kind, so use unique ids across kinds. An invite made by someone else
+for the subject's email stays; the package has no verified address mapping.
+Run this contributor before the identity account erase, which removes parent
+folder grants and identity records outside task boards.
 
 ## SDK
 
@@ -202,6 +238,7 @@ The package has these entries. The build writes each one to `dist/`.
 
 | Entry or bin | What it is | Where it is described |
 |---|---|---|
+| `agentic-tasks/account` | The typed account contributor. | [Account export and erase](#account-export-and-erase) |
 | `agentic-tasks` | The library: `createTasks`, `createFileStore`, `tasksAccount`, `trustedContext`, types, `TaskError`, `PRINCIPAL_KINDS`, and `VERSION`. | [Library](#library) |
 | `agentic-tasks/client` | A typed client for the Worker HTTP API. | [SDK](#sdk) |
 | `agentic-tasks/worker` | The HTTP API as a Hono app for a Cloudflare Worker. | [Worker](#worker) |
@@ -232,7 +269,7 @@ await tasks.claim(task.id, ana, { ttlMs: 600_000 });
 
 - `createTasks({ store, now? })` returns the `Tasks` methods. `store` is any `Store` from `agentic-identity` that passes its contract suite. `now` is a `() => Date` clock, for tests.
 - `createFileStore(path, options?)` is the JSON file adapter. `options` are the adapter options of `agentic-identity`.
-- `tasksAccount` has `exportAccount` and `eraseAccount`, for a host that runs account export and erase. See [Lifecycle](#lifecycle).
+- `tasksAccount` has `exportAccount` and `eraseAccount`, for a host that runs account export and erase. See [Account export and erase](#account-export-and-erase).
 - A refused call throws `TaskError`. Its `code` is one of `NOT_FOUND`, `FORBIDDEN`, `INVALID_INPUT`, `CLAIM_HELD`, `NOT_HOLDER`, or `TASK_CLOSED`.
 - `PRINCIPAL_KINDS` lists the kinds: `human`, `agent_of_human`, `agent_of_agent`, `agent`, and `user_token`. `VERSION` is the package version.
 

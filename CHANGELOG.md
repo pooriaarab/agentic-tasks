@@ -6,6 +6,20 @@ All notable changes to this package are in this file. The format follows
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-30
+
+### Added
+
+- Publish the typed account contributor at `agentic-tasks/account`.
+
+### Changed
+
+- Use `agentic-identity` ^0.10.0 and its account registry contract.
+- Account calls take `{ store }` in place of `{ tasks, ctx }`. Export owned and
+  authored data, sharing records, and history. Erase sole-owned boards, preserve
+  shared boards, remove subject grants, and scrub author ids while keeping kinds.
+  Validate stored records before mutation and use transactions for safe retries.
+
 ## [0.11.1] - 2026-10-29
 
 Patch. The package's own functions do not change. A host that also uses
