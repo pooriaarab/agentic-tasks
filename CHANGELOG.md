@@ -6,6 +6,12 @@ All notable changes to this package are in this file. The format follows
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-10-30
+
+### Changed
+
+- Accept identity 0.11 and test the UI with design 0.10.
+
 ## [0.13.0] - 2026-10-30
 
 ### Added
