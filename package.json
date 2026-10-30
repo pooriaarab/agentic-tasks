@@ -95,9 +95,9 @@
     "wrangler": "^4.155.0"
   },
   "peerDependencies": {
+    "agentic-identity": ">=0.10.0 <1.0.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "agentic-identity": ">=0.10.0 <1.0.0"
+    "react-dom": "^19.0.0"
   },
   "peerDependenciesMeta": {
     "react": {
