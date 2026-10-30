@@ -165,8 +165,10 @@ export const tasksAccount: TasksAccount = {
               if (matches((d.claim as Doc | undefined)?.holder, subject)) delete d.claim;
             }
             if (c === "audit") {
-              for (const key of ["principalId", "rootId", "targetId"]) if (d[key] === subject.id) d[key] = ERASED;
-              d.chain = (d.chain as Doc[]).map(v => v.id === subject.id ? { ...v, id: ERASED } : v);
+              if (d.principalId === subject.id && d.principalKind === subject.kind) d.principalId = ERASED;
+              if (d.rootId === subject.id && (d.chain as Doc[])[0]?.kind === rootKind(subject)) d.rootId = ERASED;
+              if (d.targetId === subject.id && d.targetKind === rootKind(subject)) d.targetId = ERASED;
+              d.chain = (d.chain as Doc[]).map(v => v.id === subject.id && v.kind === rootKind(subject) ? { ...v, id: ERASED } : v);
             }
             await tx.put(c, r.id, d);
             delta[bucket(c)]++;

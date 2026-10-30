@@ -77,6 +77,25 @@ describe("account contributor", () => {
     expect(Object.values(await tasksAccount.eraseAccount(bot, { store })).every(n => n === 0)).toBe(true);
   });
 
+  it("scrubs audit ids only for the subject's principal kind", async () => {
+    const { store, tasks, board } = await setup();
+    const { b } = await board("bob");
+    await tasks.shareBoard(b.id, { id: "x", kind: "agent" }, "owner", ctx("bob", "human"));
+    await tasks.shareBoard(b.id, { id: "x", kind: "human" }, "viewer", ctx("x", "agent"));
+    const before = (await store.query("audit")).items.find(r => r.data.principalId === "x" && r.data.targetId === "x")!;
+    expect(before.data).toMatchObject({ principalKind: "agent", targetKind: "human", rootId: "x" });
+    await tasksAccount.eraseAccount({ id: "x", kind: "human" }, { store });
+    expect(await store.get("audit", before.id)).toMatchObject({
+      principalId: "x", principalKind: "agent", rootId: "x",
+      chain: [{ id: "x", kind: "agent" }], targetId: "(erased)", targetKind: "human",
+    });
+    await tasksAccount.eraseAccount({ id: "x", kind: "agent" }, { store });
+    expect(await store.get("audit", before.id)).toMatchObject({
+      principalId: "(erased)", principalKind: "agent", rootId: "(erased)",
+      chain: [{ id: "(erased)", kind: "agent" }], targetId: "(erased)", targetKind: "human",
+    });
+  });
+
   it("fails closed before mutation on damaged records", async () => {
     const { store, board } = await setup();
     const { b, t } = await board("ana");
