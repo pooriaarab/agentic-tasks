@@ -220,6 +220,11 @@ export function createApp(resolve: Resolve, auth?: Auth | ((env: Bindings) => Au
     c.json(await tasksOf(c).getBoard(c.req.param("boardId"), ctxOf(c))),
   );
 
+  api.patch("/boards/:boardId", async (c) => {
+    const body = await jsonBody<{ title?: string }>(c);
+    return c.json(await tasksOf(c).renameBoard(c.req.param("boardId"), body?.title ?? "", ctxOf(c)));
+  });
+
   api.post("/boards/:boardId/columns", async (c) => {
     const body = await jsonBody<{ name?: string }>(c);
     return c.json(

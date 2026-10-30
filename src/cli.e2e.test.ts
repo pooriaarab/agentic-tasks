@@ -60,6 +60,25 @@ describe("agentic-tasks CLI (built binary)", { timeout: 30_000 }, () => {
     expect(board.columns.map((column) => column.name)).toEqual(["Todo", "Doing"]);
   });
 
+  it("renames a board across processes and reports refused calls", () => {
+    const { boardId } = makeBoard();
+    const renamed = run(["rename", "--board", boardId, "--title", "  Next  ", ...BOT]);
+    expect(renamed.code).toBe(0);
+    expect(JSON.parse(renamed.stdout).title).toBe("Next");
+    expect(JSON.parse(run(["boards", ...ALICE]).stdout)[0].title).toBe("Next");
+    run(["share", boardId, "bot-1", "viewer", "--subject-kind", "agent", ...ALICE]);
+    const denied = run(["rename", boardId, "Denied", ...BOT]);
+    expect(denied.code).toBe(1);
+    expect(errorCodeOf(denied)).toBe("FORBIDDEN");
+    for (const title of [" ", "x".repeat(201)]) {
+      const bad = run(["rename", boardId, title, ...ALICE]);
+      expect(bad.code).toBe(1);
+      expect(errorCodeOf(bad)).toBe("INVALID_INPUT");
+    }
+    expect(errorCodeOf(run(["rename", "missing", "Title", ...ALICE]))).toBe("NOT_FOUND");
+    expect(run(["rename", "--help"]).stdout).toContain("200");
+  });
+
   it("adds a column to an existing board and refuses a duplicate name", () => {
     const { boardId } = makeBoard();
     const added = run(["column", boardId, "Done", ...ALICE]);
@@ -533,6 +552,7 @@ describe("agentic-tasks MCP server over stdio (built binary)", () => {
     const names = tools.map((tool) => tool.name);
     for (const expected of [
       "create_board",
+      "rename_board",
       "add_column",
       "create_task",
       "get_task",
@@ -556,6 +576,29 @@ describe("agentic-tasks MCP server over stdio (built binary)", () => {
     ]) {
       expect(names).toContain(expected);
     }
+  });
+
+  it("renames boards and reports typed refusals over stdio", async () => {
+    const alice = { id: "alice", kind: "human" };
+    const bob = { id: "bob", kind: "human" };
+    const board = JSON.parse(textOf(await call("create_board", { title: "Before", principal: alice })));
+    const rename = (title: string, principal = alice, boardId = board.id) =>
+      call("rename_board", { boardId, title, principal });
+    expect(JSON.parse(textOf(await rename("  After  "))).title).toBe("After");
+    await call("share_board", { boardId: board.id, subjectKind: "human", subjectId: "bob", role: "viewer", principal: alice });
+    const denied = await rename("Denied", bob);
+    expect(denied.isError).toBe(true);
+    expect(textOf(denied)).toContain("FORBIDDEN");
+    for (const title of [" ", "x".repeat(201)]) {
+      const bad = await rename(title);
+      expect(bad.isError).toBe(true);
+      expect(textOf(bad)).toContain("INVALID_INPUT");
+    }
+    const missing = await rename("Title", alice, "missing");
+    expect(missing.isError).toBe(true);
+    expect(textOf(missing)).toContain("NOT_FOUND");
+    const boards = JSON.parse(textOf(await call("list_boards", { principal: alice })));
+    expect(boards[0].title).toBe("After");
   });
 
   it("runs the claim rules through tool calls", async () => {

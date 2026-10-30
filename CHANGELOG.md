@@ -6,6 +6,14 @@ All notable changes to this package are in this file. The format follows
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-30
+
+### Added
+
+- Rename boards with the store API, HTTP client, HTTP PATCH route, CLI, and MCP.
+  Require owner or editor access. Trim titles and reject empty titles or titles
+  above 200 UTF-16 code units with typed errors.
+
 ## [0.12.0] - 2026-10-30
 
 ### Added

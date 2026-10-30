@@ -99,6 +99,7 @@ export interface ListTasksFilter {
 export interface TasksClient {
   createBoard(input: { title: string }, options?: CallOptions): Promise<Board>;
   getBoard(boardId: string, options?: CallOptions): Promise<Board>;
+  renameBoard(boardId: string, title: string, options?: CallOptions): Promise<Board>;
   addColumn(boardId: string, name: string, options?: CallOptions): Promise<Board>;
   shareBoard(boardId: string, subject: { kind: MemberKind; id: string }, role: BoardRole, options?: CallOptions): Promise<void>;
   unshareBoard(boardId: string, subject: { kind: MemberKind; id: string }, options?: CallOptions): Promise<void>;
@@ -253,6 +254,7 @@ export function createClient(options: ClientOptions): TasksClient {
   const methods: TasksClient = {
     createBoard: (input, o) => call("POST", "/boards", input, o, "board"),
     getBoard: (id, o) => call("GET", `/boards/${seg(id)}`, undefined, o, "board"),
+    renameBoard: (id, title, o) => call("PATCH", `/boards/${seg(id)}`, { title }, o, "board"),
     addColumn: (id, name, o) => call("POST", `/boards/${seg(id)}/columns`, { name }, o, "board"),
     shareBoard: async (id, subject, role, o) => {
       await call("PUT", member(id, subject), { role }, o, "shared");
