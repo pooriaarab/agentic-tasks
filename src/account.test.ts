@@ -96,6 +96,32 @@ describe("account contributor", () => {
     });
   });
 
+  it("exports and scrubs identity-style delegated audit chains", async () => {
+    const { store, tasks, board } = await setup();
+    const { b } = await board("h");
+    const chain = [{ id: "h", kind: "human" }, { id: "y", kind: "agent_of_human" }] as const;
+    const leaf = { ...ctx("y", "agent_of_human"), principalId: "y", kind: "agent_of_human", chain: [...chain] } as const;
+    const child = { ...ctx("w", "agent_of_agent"), principalId: "w", kind: "agent_of_agent", chain: [...chain, { id: "w", kind: "agent_of_agent" }] } as const;
+    await tasks.shareBoard(b.id, { id: "reader1", kind: "human" }, "viewer", leaf as never);
+    await tasks.shareBoard(b.id, { id: "reader2", kind: "human" }, "viewer", child as never);
+    const subject = { id: "y", kind: "agent_of_human" } as const;
+    const out = await tasksAccount.exportAccount(subject, { store });
+    expect(out.audit).toEqual(expect.arrayContaining([
+      expect.objectContaining({ principalId: "y", chain: [...chain] }),
+      expect.objectContaining({ principalId: "w", chain: child.chain }),
+    ]));
+    const rows = (await store.query("audit")).items.filter(r => ["y", "w"].includes(String(r.data.principalId)));
+    expect(rows.length).toBeGreaterThanOrEqual(2);
+    await tasksAccount.eraseAccount(subject, { store });
+    for (const row of rows) {
+      const after = (await store.get("audit", row.id))!;
+      expect(after.chain).toEqual((row.data.chain as { id: string; kind: string }[]).map(p => p.id === "y" ? { ...p, id: "(erased)" } : p));
+      expect(after.principalId).toBe(row.data.principalId === "y" ? "(erased)" : "w");
+      expect(after.principalKind).toBe(row.data.principalKind);
+      expect(after.rootId).toBe("h");
+    }
+  });
+
   it("fails closed before mutation on damaged records", async () => {
     const { store, board } = await setup();
     const { b, t } = await board("ana");

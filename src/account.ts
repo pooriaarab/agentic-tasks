@@ -29,6 +29,7 @@ const principal = (v: unknown): v is { id: string; kind: string } => {
 };
 const matches = (v: unknown, s: AccountSubject) => principal(v) && v.id === s.id && v.kind === s.kind;
 const rootKind = (s: AccountSubject) => s.kind === "human" || s.kind === "user_token" ? "human" : "agent";
+const chainMatches = (v: unknown, s: AccountSubject) => principal(v) && v.id === s.id && (v.kind === s.kind || v.kind === rootKind(s));
 const bucket = (c: Collection): TasksCollection => c === "progress" ? "notes" : c as TasksCollection;
 const empty = <T>(make: () => T): Record<TasksCollection, T> => Object.fromEntries(["boards", "tasks", "notes", "grants", "invites", "links", "audit"].map(c => [c, make()])) as Record<TasksCollection, T>;
 
@@ -98,7 +99,7 @@ async function plan(subject: AccountSubject, deps: TasksAccountDeps) {
       if (!Array.isArray(d.chain)) fail();
       if (d.principalId === subject.id && !(PRINCIPAL_KINDS as readonly unknown[]).includes(d.principalKind)) fail();
       if (d.chain.some(p => !principal(p))) fail();
-      return (d.principalId === subject.id && d.principalKind === subject.kind) || d.chain.some(p => principal(p) && p.id === subject.id && p.kind === rootKind(subject)) || (d.targetId === subject.id && d.targetKind === rootKind(subject));
+      return (d.principalId === subject.id && d.principalKind === subject.kind) || d.chain.some(p => chainMatches(p, subject)) || (d.targetId === subject.id && d.targetKind === rootKind(subject));
     }
     return false;
   };
@@ -166,9 +167,9 @@ export const tasksAccount: TasksAccount = {
             }
             if (c === "audit") {
               if (d.principalId === subject.id && d.principalKind === subject.kind) d.principalId = ERASED;
-              if (d.rootId === subject.id && (d.chain as Doc[])[0]?.kind === rootKind(subject)) d.rootId = ERASED;
+              if (d.rootId === subject.id && chainMatches((d.chain as Doc[])[0], subject)) d.rootId = ERASED;
               if (d.targetId === subject.id && d.targetKind === rootKind(subject)) d.targetId = ERASED;
-              d.chain = (d.chain as Doc[]).map(v => v.id === subject.id && v.kind === rootKind(subject) ? { ...v, id: ERASED } : v);
+              d.chain = (d.chain as Doc[]).map(v => chainMatches(v, subject) ? { ...v, id: ERASED } : v);
             }
             await tx.put(c, r.id, d);
             delta[bucket(c)]++;
