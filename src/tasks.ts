@@ -108,6 +108,7 @@ export interface TaskFilter {
 export interface Tasks {
   createBoard(input: NewBoard, ctx: PrincipalContext): Promise<Board>;
   getBoard(id: string, ctx: PrincipalContext): Promise<Board>;
+  renameBoard(id: string, title: string, ctx: PrincipalContext): Promise<Board>;
   addColumn(boardId: string, name: string, ctx: PrincipalContext): Promise<Board>;
   createTask(input: NewTask, ctx: PrincipalContext): Promise<Task>;
   getTask(id: string, ctx: PrincipalContext): Promise<Task>;
@@ -532,6 +533,19 @@ export function createTasks(options: TasksOptions): Tasks {
 
     async getBoard(id, ctx) {
       return authorize(ctx, "read", id);
+    },
+
+    async renameBoard(id, title, ctx) {
+      await authorize(ctx, "write", id);
+      const cleaned = requireText(title, "board title");
+      if (cleaned.length > 200) throw invalid("board title must be at most 200 characters");
+      return store.transaction(async (tx) => {
+        const board = await requireBoard(tx, id);
+        board.title = cleaned;
+        board.updatedAt = clock().toISOString();
+        await putRow(tx, "boards", board);
+        return board;
+      });
     },
 
     async addColumn(boardId, name, ctx) {

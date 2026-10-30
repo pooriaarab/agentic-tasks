@@ -78,6 +78,31 @@ describe("createClient against the Worker", () => {
     expect((await alice.closeTask(task.id)).status).toBe("closed");
   });
 
+  it("persists board rename and returns typed refusals", async () => {
+    const board = await alice.createBoard({ title: "Before" });
+    await alice.addColumn(board.id, "Todo");
+    const before = await alice.getBoard(board.id);
+    expect((await alice.renameBoard(board.id, "  After  ")).title).toBe("After");
+    const renamed = await alice.getBoard(board.id);
+    expect(renamed).toMatchObject({ ...before, title: "After", updatedAt: renamed.updatedAt });
+    expect(Date.parse(renamed.updatedAt)).toBeGreaterThan(Date.parse(before.updatedAt));
+    await alice.shareBoard(board.id, { kind: "human", id: "bob" }, "viewer");
+    const denied = await refusal(bob.renameBoard(board.id, "Denied"));
+    expect([denied.code, denied.status]).toEqual(["FORBIDDEN", 403]);
+    await alice.shareBoard(board.id, { kind: "human", id: "bob" }, "commenter");
+    expect((await refusal(bob.renameBoard(board.id, "Denied"))).code).toBe("FORBIDDEN");
+    await alice.shareBoard(board.id, { kind: "human", id: "bob" }, "editor");
+    expect((await bob.renameBoard(board.id, "Editor")).title).toBe("Editor");
+    for (const title of ["", "  ", "x".repeat(201), 42 as never]) {
+      const error = await refusal(alice.renameBoard(board.id, title));
+      expect([error.code, error.status]).toEqual(["INVALID_INPUT", 400]);
+    }
+    expect((await alice.getBoard(board.id)).title).toBe("Editor");
+    expect((await alice.renameBoard(board.id, " " + "x".repeat(200) + " ")).title).toHaveLength(200);
+    const missing = await refusal(alice.renameBoard("missing-board", "Title"));
+    expect([missing.code, missing.status]).toEqual(["NOT_FOUND", 404]);
+  });
+
   it("shares, unshares, and erases a board", async () => {
     const board = await alice.createBoard({ title: "Shared" });
     const denied = await refusal(bob.getBoard(board.id));
@@ -280,6 +305,7 @@ describe("createClient requests", () => {
     });
     const calls = [
       (id: string) => client.getBoard(id),
+      (id: string) => client.renameBoard(id, "Title"),
       (id: string) => client.eraseBoard(id),
       (id: string) => client.listAccess(id),
       (id: string) => client.revokeBoardLink("b", id),

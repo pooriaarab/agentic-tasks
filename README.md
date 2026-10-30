@@ -7,7 +7,7 @@
 
 Task boards where people and agents claim and finish work.
 
-> Status: early (0.12.0). The library, CLI, and MCP server use the shared `Store` port
+> Status: early (0.13.0). The library, CLI, and MCP server use the shared `Store` port
 > from `agentic-identity`. The CLI keeps data in a local JSON file.
 > The HTTP API runs as a Worker on a D1 database. Board roles come from
 > `agentic-identity`. The Worker reads a bearer credential from the same D1
@@ -69,6 +69,19 @@ for, and its scopes. A board is a resource with roles. A call needs a role:
 | commenter | also add progress notes |
 | editor | also add columns, make, move, edit, claim, release, and close tasks |
 | owner | also share the board, invite, make share links, list access, and take access away |
+
+Rename a board with `renameBoard(id, title, ctx)` on the store API,
+`client.renameBoard(id, title)` on the HTTP client,
+`tasks rename <board id> "<title>" --as ana --kind human`, or the
+`rename_board` MCP tool with `boardId`, `title`, and `principal`.
+The HTTP route is `PATCH /api/v1/tasks/boards/:boardId` with
+`{ "title": "New title" }`. Each call returns the saved board.
+An owner or editor can rename. A viewer or commenter gets `FORBIDDEN`
+(HTTP 403). Titles are trimmed and must have 1–200 UTF-16 code units.
+Invalid titles get `INVALID_INPUT` (HTTP 400). A missing board gets
+`NOT_FOUND` (HTTP 404). Store calls throw `TaskError`; client calls throw
+`TasksApiError`. Rename updates `updatedAt` and records the actor in the
+access audit. Columns, tasks, and sharing stay the same.
 
 The person who makes a board owns it. An agent that acts for a person gets that
 person's role, cut down by the scopes that its chain leaves. Every check writes
@@ -171,7 +184,7 @@ try {
 - `baseUrl` is the Worker URL, `http` or `https`, with no query, hash, or credentials. The client adds
   `/api/v1/tasks` after any path prefix.
 - `token` is a bearer credential that the Worker accepts. `fetch` is optional.
-- One method for each route: `createBoard`, `getBoard`, `addColumn`, `shareBoard`,
+- One method for each route: `createBoard`, `getBoard`, `renameBoard`, `addColumn`, `shareBoard`,
   `unshareBoard`, `listAccess`, `inviteToBoard`, `createBoardLink`, `revokeBoardLink`, `eraseBoard`, `listBoards`, `exportData`, `deleteTask`, `createTask`, `listTasks`, `getTask`, `updateTask`,
   `moveTask`, `claim`, `release`, `closeTask`, `progress`, and `listProgress`.
 - A refused call throws `TasksApiError` with the API error `code` and the HTTP `status`.

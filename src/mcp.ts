@@ -40,6 +40,14 @@ export function createMcpServer(tasks: Tasks): McpServer {
   );
 
   server.tool(
+    "rename_board",
+    "Rename a board. Needs editor or owner. Title: 1–200 characters after trimming.",
+    { boardId: z.string(), title: z.string(), principal: actor },
+    async ({ boardId, title, principal }) =>
+      respond(() => tasks.renameBoard(boardId, title, ctx(principal))),
+  );
+
+  server.tool(
     "add_column",
     "Append a named column to a board.",
     { boardId: z.string(), name: z.string(), principal: actor },

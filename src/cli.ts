@@ -22,6 +22,11 @@ const COMMANDS: Record<string, CommandSpec> = {
     summary: "Create a board. The title is the argument or --title. --columns adds columns.",
     flags: ["title", "columns"],
   },
+  rename: {
+    args: "<board id> <title>",
+    summary: "Rename a board. Needs editor or owner. Title: 1–200 characters after trimming.",
+    flags: ["title"],
+  },
   column: { args: "<board id> <name>", summary: "Add a column to a board.", flags: ["name"] },
   new: {
     args: "<board id> <title>",
@@ -276,6 +281,8 @@ async function runCommand(
       }
       return current;
     }
+    case "rename":
+      return tasks.renameBoard(need("board id"), need("title"), actorFrom(flags));
     case "column":
       return tasks.addColumn(
         need("board id"),
