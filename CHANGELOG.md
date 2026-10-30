@@ -6,6 +6,12 @@ All notable changes to this package are in this file. The format follows
 
 ## [Unreleased]
 
+## [0.11.2] - 2026-10-30
+
+### Changed
+
+- Document the public types and Worker helper signatures in the README.
+
 ## [0.11.1] - 2026-10-29
 
 Patch. The package's own functions do not change. A host that also uses
