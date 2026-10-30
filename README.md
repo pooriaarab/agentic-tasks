@@ -146,6 +146,14 @@ try {
 - The Worker sends no CORS headers. A browser page can call it only from the same origin.
 - The client never retries. A refused claim stays refused: wait for the holder or the expiry.
 
+`createClient(options: ClientOptions): TasksClient` creates the client. `ClientOptions` holds
+`baseUrl`, `token`, and optional `fetch`. `CallOptions` holds an optional abort `signal`.
+`ListTasksFilter` selects a board and optionally a column or status. `ApiErrorCode` names
+API error codes; `MemberKind` and `BoardRole` name sharing subjects and roles.
+The client also exports the `Board`, `ProgressEntry`, `Task`, `TaskStatus`, `BoardAccess`,
+`ClaimOptions`, `InviteInput`, `LinkInput`, `LinkSummary`, `MoveTarget`, `NewTask`,
+`TaskPatch`, and `TasksExport` types described under [Library](#library).
+
 ## Live demo
 
 A demo Worker runs at <https://agentic-tasks-demo.hello-fd1.workers.dev>.
@@ -236,6 +244,18 @@ await tasks.claim(task.id, ana, { ttlMs: 600_000 });
 - A refused call throws `TaskError`. Its `code` is one of `NOT_FOUND`, `FORBIDDEN`, `INVALID_INPUT`, `CLAIM_HELD`, `NOT_HOLDER`, or `TASK_CLOSED`.
 - `PRINCIPAL_KINDS` lists the kinds: `human`, `agent_of_human`, `agent_of_agent`, `agent`, and `user_token`. `VERSION` is the package version.
 
+The library also exports these TypeScript types:
+
+- `Board`, `Column`, `Task`, `Claim`, and `ProgressEntry` describe stored records.
+- `Principal` and `PrincipalKind` describe an actor; `TaskStatus` describes a task state.
+- `TaskErrorCode` names the error codes of `TaskError`.
+- `Tasks` is the library API; `TasksOptions` supplies its store and optional clock.
+- `NewBoard`, `NewTask`, `TaskPatch`, and `MoveTarget` describe write inputs.
+- `ClaimOptions` sets a claim TTL; `TaskFilter` selects tasks to list.
+- `InviteInput` and `LinkInput` describe sharing inputs; `LinkSummary` and `BoardAccess` describe access results.
+- `TasksExport` describes exported boards and their data.
+- `TasksAccount` describes the account lifecycle API; `TasksAccountDeps` supplies its tasks and principal context.
+
 ### Worker
 
 The default export of `agentic-tasks/worker` is the HTTP API at `/api/v1/tasks`.
@@ -294,8 +314,10 @@ Without test auth, the default export takes a bearer token, or a `session` cooki
 The module also has these named exports:
 
 - `createApp(resolve, auth?)` builds the app. `resolve(env)` returns the `Tasks` to use. `env` holds the Worker bindings. The `Bindings` type is not exported, so type `env` as `unknown` in your own code. `auth` is an `Auth` from `agentic-identity`, or a function of `env` that returns one. When you pass `auth`, `TASKS_UNSAFE_LOCAL_TEST_AUTH` has no effect.
-- `tasksOnD1(env)` returns the default `Tasks` on `DB`. `authOnD1(env)` returns the default credential check on `DB`.
-- `localTestAuth` and `isLoopbackRequest` are the loopback test auth.
+- `tasksOnD1(env): Tasks` returns the default `Tasks` on `DB`.
+- `authOnD1(env): Auth` returns the default credential check on `DB`.
+- `localTestAuth: Auth` reads the local test principal headers on loopback requests.
+- `isLoopbackRequest(request: Request): boolean` checks the request URL host and `cf-connecting-ip` for loopback values.
 
 To use another store or credential check, call `createApp` yourself. It still needs the `DB` binding and a valid `TASKS_REGION`. Without them it answers 503 before it calls your store.
 
@@ -304,7 +326,7 @@ Your `auth` decides what a region mismatch looks like:
 - If your `auth` reads the database and throws, the response is 503 `STORE_BUSY`, as above.
 - If your `auth` passes the request and the task store then hits a region mismatch, the response is 500 `INTERNAL`.
 
-Install `agentic-identity` `^0.6.0` in your app. This package uses that version. The example imports its types:
+Install `agentic-identity` `^0.9.0` in your app. This package uses that version. The example imports its types:
 
 ```ts
 import { createApp } from "agentic-tasks/worker";
@@ -415,6 +437,11 @@ const ui = mount(document.getElementById("tasks")!, {
 ui.update({ baseUrl, getToken, principal, boardId: "other" });  // show another list
 ui.unmount();                                                   // remove the UI
 ```
+
+`mount(element: HTMLElement, options: TasksUiOptions): MountedTasks` renders the UI.
+`TasksUiOptions` holds the connection and principal options. `EmbedPrincipal` holds the
+principal id and kind. `MountedTasks` provides `update` and `unmount`. The entry also
+exports the client API type `TasksClient`.
 
 `ui.css` is global. It holds the design tokens and base rules for `html`, `body`, headings, and links, and it
 uses plain class names such as `.card` and `.row`. Load it on a page that can take those styles. The UI does not
