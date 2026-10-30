@@ -1,6 +1,7 @@
 import type { ChildProcess } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { createServer } from "node:net";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { LOCAL_REGION, migrate, seedCredential, startWorker, stopWorker, waitForWorker } from "./worker-harness.js";
@@ -9,10 +10,15 @@ import { LOCAL_REGION, migrate, seedCredential, startWorker, stopWorker, waitFor
 const PERSIST = mkdtempSync(join(tmpdir(), "agentic-tasks-e2e-"));
 beforeAll(() => migrate(PERSIST), 120_000);
 afterAll(() => rmSync(PERSIST, { recursive: true, force: true }));
-const PORT = 18787;
-const PORT_WITHOUT_FLAG = 18788;
-const BASE = `http://127.0.0.1:${PORT}/api/v1/tasks`;
-const BASE_WITHOUT_FLAG = `http://127.0.0.1:${PORT_WITHOUT_FLAG}/api/v1/tasks`;
+async function freePort(): Promise<number> {
+  const probe = createServer();
+  await new Promise<void>(resolve => probe.listen(0, "127.0.0.1", resolve));
+  const { port } = probe.address() as { port: number };
+  await new Promise<void>(resolve => probe.close(() => resolve()));
+  return port;
+}
+let BASE = "";
+let BASE_WITHOUT_FLAG = "";
 const TRUST_FLAG = ["TASKS_UNSAFE_LOCAL_TEST_AUTH:1"];
 const ALICE = { "x-principal-id": "alice", "x-principal-kind": "human" };
 const BOT = { "x-principal-id": "bot-1", "x-principal-kind": "agent_of_human" };
@@ -71,7 +77,9 @@ describe("agentic-tasks Worker with stored credentials", () => {
 
   beforeAll(async () => {
     token = await seedCredential(PERSIST, "alice");
-    server = startWorker(PORT_WITHOUT_FLAG, PERSIST, [...LOCAL_REGION]);
+    const port = await freePort();
+    BASE_WITHOUT_FLAG = `http://127.0.0.1:${port}/api/v1/tasks`;
+    server = startWorker(port, PERSIST, [...LOCAL_REGION]);
     await waitForWorker(BASE_WITHOUT_FLAG, server);
   }, 120_000);
 
@@ -96,7 +104,7 @@ describe("agentic-tasks Worker with stored credentials", () => {
   it("serves a stored credential, and takes the principal from the store, not the headers", async () => {
     const response = await fetch(`${BASE_WITHOUT_FLAG}/boards`, {
       method: "POST",
-      headers: { authorization: `Bearer ${token}`, "x-principal-id": "mallory", "x-principal-kind": "human" },
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json", "x-principal-id": "mallory", "x-principal-kind": "human" },
       body: JSON.stringify({ title: "Sprint" }),
     });
     expect(response.status).toBe(201);
@@ -108,7 +116,9 @@ describe("agentic-tasks Worker over wrangler dev", () => {
   let server: ChildProcess;
 
   beforeAll(async () => {
-    server = startWorker(PORT, PERSIST, [...TRUST_FLAG, ...LOCAL_REGION]);
+    const port = await freePort();
+    BASE = `http://127.0.0.1:${port}/api/v1/tasks`;
+    server = startWorker(port, PERSIST, [...TRUST_FLAG, ...LOCAL_REGION]);
     await waitForWorker(BASE, server);
   }, 120_000);
 

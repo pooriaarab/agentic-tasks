@@ -24,7 +24,7 @@ const COMMANDS: Record<string, CommandSpec> = {
   },
   rename: {
     args: "<board id> <title>",
-    summary: "Rename a board. Needs editor or owner. Title: 1–200 characters after trimming.",
+    summary: "Rename a board. Needs editor or owner. Title: 1–200 UTF-16 code units after trimming.",
     flags: ["title"],
   },
   column: { args: "<board id> <name>", summary: "Add a column to a board.", flags: ["name"] },

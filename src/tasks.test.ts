@@ -729,6 +729,38 @@ describe("board roles", () => {
     await expect(code(tasks.createBoard({ title: "No" }, narrow))).resolves.toBe("FORBIDDEN");
   });
 
+  it("renames with a full agent audit chain and preserves tasks and grants", async () => {
+    await tasks.shareBoard(boardId, { kind: "human", id: "carol" }, "viewer", ALICE);
+    const beforeTasks = await tasks.listTasks({ boardId }, ALICE);
+    const beforeAccess = await tasks.listAccess(boardId, ALICE);
+    const beforeBoard = await tasks.getBoard(boardId, ALICE);
+    const agent: PrincipalContext = {
+      principalId: "rename-agent",
+      kind: "agent_of_human",
+      chain: [{ id: "alice", kind: "human" }, { id: "rename-agent", kind: "agent_of_human" }],
+      scopes: ["board:write"],
+    };
+    const renamed = await tasks.renameBoard(boardId, "  New title  ", agent);
+    expect(renamed).toEqual({ ...beforeBoard, title: "New title", updatedAt: renamed.updatedAt });
+    const { entries } = await createSharing(store).listAudit(ALICE, boardId);
+    expect(entries.find(e => e.principalId === agent.principalId)).toMatchObject({
+      action: "write", principalKind: "agent_of_human", machineMade: true,
+      outcome: "allowed", chain: agent.chain,
+    });
+    expect(await tasks.listTasks({ boardId }, ALICE)).toEqual(beforeTasks);
+    expect(await tasks.listAccess(boardId, ALICE)).toEqual(beforeAccess);
+    expect((await tasks.getBoard(boardId, CAROL)).title).toBe("New title");
+  });
+
+  it("counts surrogate pairs in the board title limit", async () => {
+    const title = "😀".repeat(100);
+    expect((await tasks.renameBoard(boardId, title, ALICE)).title).toBe(title);
+    await expect(tasks.renameBoard(boardId, title + "x", ALICE)).rejects.toMatchObject({
+      code: "INVALID_INPUT", message: "board title must be at most 200 UTF-16 code units",
+    });
+    expect((await tasks.getBoard(boardId, ALICE)).title).toBe(title);
+  });
+
   it("writes an audit entry that labels an agent as machine-made", async () => {
     const agent: PrincipalContext = {
       principalId: "bot-9",

@@ -41,7 +41,7 @@ export function createMcpServer(tasks: Tasks): McpServer {
 
   server.tool(
     "rename_board",
-    "Rename a board. Needs editor or owner. Title: 1–200 characters after trimming.",
+    "Rename a board. Needs editor or owner. Title: 1–200 UTF-16 code units after trimming.",
     { boardId: z.string(), title: z.string(), principal: actor },
     async ({ boardId, title, principal }) =>
       respond(() => tasks.renameBoard(boardId, title, ctx(principal))),

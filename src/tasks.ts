@@ -538,7 +538,7 @@ export function createTasks(options: TasksOptions): Tasks {
     async renameBoard(id, title, ctx) {
       await authorize(ctx, "write", id);
       const cleaned = requireText(title, "board title");
-      if (cleaned.length > 200) throw invalid("board title must be at most 200 characters");
+      if (cleaned.length > 200) throw invalid("board title must be at most 200 UTF-16 code units");
       return store.transaction(async (tx) => {
         const board = await requireBoard(tx, id);
         board.title = cleaned;
